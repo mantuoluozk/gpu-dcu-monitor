@@ -94,7 +94,7 @@ npm start
 
 - `PORT`：网页端口，默认 `3066`。
 - `POLL_INTERVAL_MS`：自动采集间隔，默认 `10000` 毫秒。
-- `SSH_TIMEOUT_MS`：单台服务器 SSH 超时，默认 `8000` 毫秒。
+- `SSH_TIMEOUT_MS`：单台服务器 SSH/采集命令超时，默认 `20000` 毫秒。NVIDIA 机器首次执行 `nvidia-smi` 较慢时可以继续调大。
 - `SSH_PATH`：自定义 SSH 程序路径。Windows 默认使用 `C:\Windows\System32\OpenSSH\ssh.exe`。
 
 ## 上传到 GitHub

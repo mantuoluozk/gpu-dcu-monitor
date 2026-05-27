@@ -6,7 +6,7 @@ const crypto = require("crypto");
 
 const PORT = Number(process.env.PORT || 3066);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
-const SSH_TIMEOUT_MS = Number(process.env.SSH_TIMEOUT_MS || 8000);
+const SSH_TIMEOUT_MS = Number(process.env.SSH_TIMEOUT_MS || 20000);
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const CONFIG_PATH = path.join(DATA_DIR, "servers.json");
