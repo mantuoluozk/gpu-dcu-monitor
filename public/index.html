@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GPU/DCU 资源看板</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">G</div>
+          <div>
+            <h1>GPU/DCU 资源看板</h1>
+            <p id="lastRefresh">等待刷新</p>
+          </div>
+        </div>
+
+        <div class="filters" role="tablist" aria-label="服务器筛选">
+          <button class="filter active" data-filter="all" type="button">
+            <span>全部</span><strong id="countAll">0</strong>
+          </button>
+          <button class="filter" data-filter="free" type="button">
+            <span>空闲</span><strong id="countFree">0</strong>
+          </button>
+          <button class="filter" data-filter="busy" type="button">
+            <span>占用</span><strong id="countBusy">0</strong>
+          </button>
+          <button class="filter" data-filter="offline" type="button">
+            <span>离线</span><strong id="countOffline">0</strong>
+          </button>
+        </div>
+
+        <div class="sidebar-actions">
+          <button class="primary-action" id="addServerBtn" type="button">
+            <span aria-hidden="true">＋</span>添加服务器
+          </button>
+          <button class="ghost-action" id="refreshBtn" type="button">
+            <span aria-hidden="true">↻</span>手动刷新
+          </button>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="topline">
+          <div>
+            <p class="eyebrow">共享测试资源</p>
+            <h2>服务器占用情况</h2>
+          </div>
+          <div class="search-wrap">
+            <span aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="搜索服务器、IP、标签" />
+          </div>
+        </section>
+
+        <section class="stats" aria-label="资源统计">
+          <div class="stat">
+            <span>服务器</span>
+            <strong id="statServers">0</strong>
+          </div>
+          <div class="stat">
+            <span>总卡数</span>
+            <strong id="statCards">0</strong>
+          </div>
+          <div class="stat good">
+            <span>空闲卡</span>
+            <strong id="statFreeCards">0</strong>
+          </div>
+          <div class="stat warn">
+            <span>占用卡</span>
+            <strong id="statBusyCards">0</strong>
+          </div>
+        </section>
+
+        <section class="group-panel" id="groupFilters" aria-label="服务器分组"></section>
+
+        <section class="server-grid" id="serverGrid" aria-live="polite"></section>
+
+        <section class="empty-state hidden" id="emptyState">
+          <div class="empty-icon">＋</div>
+          <h3>添加第一台服务器</h3>
+          <p>配置 SSH 登录信息后，看板会定时采集显存和算力占用。</p>
+          <button class="primary-action compact" id="emptyAddBtn" type="button">添加服务器</button>
+        </section>
+      </main>
+
+      <aside class="detail" id="detailPanel">
+        <div class="detail-empty">
+          <div class="detail-pulse"></div>
+          <h3>选择一台服务器</h3>
+          <p>查看每张加速卡的占用、显存、温度和连接状态。</p>
+        </div>
+      </aside>
+    </div>
+
+    <dialog id="serverDialog" class="server-dialog">
+      <form id="serverForm" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">服务器配置</p>
+            <h3 id="dialogTitle">添加服务器</h3>
+          </div>
+          <button class="icon-button" id="closeDialogBtn" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <input id="serverId" type="hidden" />
+        <label>
+          <span>名称</span>
+          <input id="serverName" autocomplete="off" required placeholder="例如：算法公共机 A" />
+        </label>
+        <label>
+          <span>Host / IP</span>
+          <input id="serverHost" autocomplete="off" required placeholder="10.0.0.12" />
+        </label>
+        <div class="field-row">
+          <label>
+            <span>SSH 用户</span>
+            <input id="serverUser" autocomplete="username" value="root" placeholder="root" />
+          </label>
+          <label>
+            <span>端口</span>
+            <input id="serverPort" type="number" min="1" max="65535" value="22" />
+          </label>
+        </div>
+        <label>
+          <span>分组</span>
+          <input id="serverGroup" list="groupOptions" autocomplete="off" placeholder="通信中兴组" />
+          <datalist id="groupOptions"></datalist>
+        </label>
+        <label>
+          <span>标签</span>
+          <input id="serverTags" placeholder="公共池, 回归" />
+        </label>
+        <label>
+          <span>采集命令</span>
+          <select id="serverCommand">
+            <option value="hy-smi">hy-smi（海光 DCU）</option>
+            <option value="nvidia-smi">nvidia-smi（NVIDIA GPU）</option>
+          </select>
+        </label>
+
+        <div class="dialog-actions">
+          <button class="ghost-action compact" id="deleteServerBtn" type="button">删除</button>
+          <button class="primary-action compact" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast hidden" id="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
