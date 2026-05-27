@@ -1,22 +1,22 @@
 [
   {
     "id": "sample-8-card",
-    "name": "通信中兴测试机 A",
+    "name": "测试机 A",
     "host": "10.0.0.12",
     "port": 22,
     "user": "root",
     "command": "hy-smi",
-    "group": "通信中兴组",
+    "group": "通信组",
     "tags": ["8卡", "公共池"]
   },
   {
     "id": "sample-4-card",
-    "name": "政府联想回归机 B",
+    "name": "测试机 B",
     "host": "10.0.0.23",
     "port": 22,
     "user": "root",
     "command": "hy-smi",
-    "group": "政府联想组",
+    "group": "政府组",
     "tags": ["4卡", "夜间回归"]
   }
 ]
