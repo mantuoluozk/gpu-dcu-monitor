@@ -1,4 +1,6 @@
 node_modules/
 data/servers.json
 *.log
+*.tar
+*.zip
 .env
