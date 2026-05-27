@@ -1,8 +1,8 @@
-const http = require("node:http");
-const fs = require("node:fs");
-const path = require("node:path");
-const { spawn } = require("node:child_process");
-const { randomUUID } = require("node:crypto");
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
+const crypto = require("crypto");
 
 const PORT = Number(process.env.PORT || 3066);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
@@ -26,6 +26,13 @@ let statusCache = new Map();
 let lastRefresh = null;
 let refreshInFlight = null;
 let refreshInFlightIncludesModels = false;
+
+function createId() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return [4, 2, 2, 2, 6]
+    .map((bytes) => crypto.randomBytes(bytes).toString("hex"))
+    .join("-");
+}
 
 function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -73,7 +80,7 @@ function normalizeServer(input) {
         .slice(0, 6);
 
   return {
-    id: String(input.id || randomUUID()),
+    id: String(input.id || createId()),
     name,
     host,
     port: clampInt(input.port, 1, 65535, 22),
