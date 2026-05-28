@@ -24,8 +24,10 @@
 - 同时显示显存占用和算力占用。
 - 根据显存占用和算力占用综合判断每张卡是否可用。
 - 主界面用水位色块展示每张卡的显存和算力占用。
-- 右上角支持按服务器名称、IP、分组、标签和型号进行模糊搜索。
+- 盘点每台服务器 `/models`、`/public`、`/data` 等目录下的模型文件/目录，并展示 Docker images。
+- 右上角支持按服务器名称、IP、分组、标签、型号、模型路径和镜像名称进行模糊搜索。
 - 型号只在新增服务器和手动刷新时重新识别，日常自动刷新只采集占用数据。
+- 定期备份服务器配置文件，便于误操作后恢复。
 
 ## 环境准备
 
@@ -152,6 +154,7 @@ ssh root@10.0.0.13 nvidia-smi
    Environment=PORT=3066
    Environment=POLL_INTERVAL_MS=10000
    Environment=SSH_TIMEOUT_MS=20000
+   Environment=ASSET_REFRESH_INTERVAL_MS=1800000
    ExecStart=/usr/bin/node /opt/gpu-dcu-monitor/server.js
    Restart=always
    RestartSec=3
@@ -199,6 +202,14 @@ data/servers.sample.json
 
 服务器配置支持 `group` 分组字段。页面会根据已有服务器自动生成分组筛选入口；`tags` 用于补充额外标签。
 
+程序会定期把服务器配置备份到：
+
+```text
+data/backups/
+```
+
+默认保留最近 30 份备份。
+
 ## 环境变量
 
 Windows PowerShell 示例：
@@ -221,6 +232,14 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `PORT`：网页端口，默认 `3066`。
 - `POLL_INTERVAL_MS`：自动采集间隔，默认 `10000` 毫秒。
 - `SSH_TIMEOUT_MS`：单台服务器 SSH/采集命令超时，默认 `20000` 毫秒。部分 NVIDIA 机器执行 `nvidia-smi` 较慢时可以继续调大。
+- `REFRESH_CONCURRENCY`：GPU/DCU 状态采集并发数，默认 `8`。
+- `ASSET_REFRESH_INTERVAL_MS`：模型资产和 Docker 镜像盘点间隔，默认 `1800000` 毫秒。
+- `ASSET_SSH_TIMEOUT_MS`：单台服务器资产盘点 SSH 超时，默认 `30000` 毫秒。
+- `ASSET_CONCURRENCY`：资产盘点并发数，默认 `3`。
+- `ASSET_PATHS`：模型目录扫描路径，默认 `/models,/public,/data`。
+- `ASSET_MAX_ITEMS`：每台服务器最多返回的模型条目和镜像条目数量，默认 `160`。
+- `BACKUP_INTERVAL_MS`：服务器配置定期备份间隔，默认 `86400000` 毫秒。
+- `BACKUP_RETENTION`：服务器配置备份保留份数，默认 `30`。
 - `SSH_PATH`：自定义 SSH 程序路径。Windows 默认使用 `C:\Windows\System32\OpenSSH\ssh.exe`。
 
 ## 运维命令
@@ -244,3 +263,4 @@ ss -lntp | grep 3066
 - 如果页面能打开但服务器显示离线，优先在部署机器上手动执行 `ssh root@目标IP hy-smi` 或 `ssh root@目标IP nvidia-smi`。
 - 如果 NVIDIA 服务器偶发超时，可以调大 `SSH_TIMEOUT_MS`。
 - 如果多人共同查看，建议部署在一台固定机器上，由这台机器统一采集。
+- 模型资产盘点默认不计算目录大小，避免对大模型盘产生明显 IO 压力。

@@ -7,9 +7,18 @@ const crypto = require("crypto");
 const PORT = Number(process.env.PORT || 3066);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
 const SSH_TIMEOUT_MS = Number(process.env.SSH_TIMEOUT_MS || 20000);
+const REFRESH_CONCURRENCY = clampInt(process.env.REFRESH_CONCURRENCY, 1, 32, 8);
+const ASSET_REFRESH_INTERVAL_MS = Number(process.env.ASSET_REFRESH_INTERVAL_MS || 30 * 60 * 1000);
+const ASSET_SSH_TIMEOUT_MS = Number(process.env.ASSET_SSH_TIMEOUT_MS || 30000);
+const ASSET_CONCURRENCY = clampInt(process.env.ASSET_CONCURRENCY, 1, 16, 3);
+const ASSET_MAX_ITEMS = clampInt(process.env.ASSET_MAX_ITEMS, 20, 1000, 160);
+const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || "/models,/public,/data");
+const BACKUP_INTERVAL_MS = Number(process.env.BACKUP_INTERVAL_MS || 24 * 60 * 60 * 1000);
+const BACKUP_RETENTION = clampInt(process.env.BACKUP_RETENTION, 1, 365, 30);
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const CONFIG_PATH = path.join(DATA_DIR, "servers.json");
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const PUBLIC_DIR = path.join(ROOT, "public");
 
 const MIME_TYPES = {
@@ -23,9 +32,12 @@ const MIME_TYPES = {
 };
 
 let statusCache = new Map();
+let assetCache = new Map();
 let lastRefresh = null;
+let lastAssetRefresh = null;
 let refreshInFlight = null;
 let refreshInFlightIncludesModels = false;
+let assetRefreshInFlight = null;
 
 function createId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -37,6 +49,9 @@ function createId() {
 function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(BACKUP_DIR)) {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
   }
   if (!fs.existsSync(CONFIG_PATH)) {
     fs.writeFileSync(CONFIG_PATH, "[]\n", "utf8");
@@ -60,6 +75,61 @@ function saveServers(servers) {
   const tmp = `${CONFIG_PATH}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(servers, null, 2)}\n`, "utf8");
   fs.renameSync(tmp, CONFIG_PATH);
+}
+
+function backupServerConfig(reason) {
+  ensureDataFile();
+  if (!fs.existsSync(CONFIG_PATH)) return;
+  const stamp = compactTimestamp(new Date());
+  const suffix = reason ? `.${reason}` : "";
+  const target = path.join(BACKUP_DIR, `servers.${stamp}${suffix}.json`);
+  try {
+    fs.copyFileSync(CONFIG_PATH, target);
+    pruneBackups();
+  } catch (error) {
+    console.warn(`Server config backup failed: ${error.message}`);
+  }
+}
+
+function pruneBackups() {
+  if (!fs.existsSync(BACKUP_DIR)) return;
+  const backups = fs
+    .readdirSync(BACKUP_DIR)
+    .filter((name) => /^servers\.\d{14}.*\.json$/.test(name))
+    .map((name) => ({
+      name,
+      filePath: path.join(BACKUP_DIR, name),
+      mtimeMs: fs.statSync(path.join(BACKUP_DIR, name)).mtimeMs
+    }))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  backups.slice(BACKUP_RETENTION).forEach((backup) => {
+    try {
+      fs.unlinkSync(backup.filePath);
+    } catch (error) {
+      console.warn(`Failed to prune backup ${backup.name}: ${error.message}`);
+    }
+  });
+}
+
+function compactTimestamp(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds())
+  ].join("");
+}
+
+function parseCsv(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 24);
 }
 
 function normalizeServer(input) {
@@ -131,11 +201,60 @@ function optionalInt(value, min, max) {
   return clampInt(value, min, max, 0);
 }
 
-function publicServer(server) {
+function publicServer(server, options = {}) {
   const cached = statusCache.get(server.id);
+  const assets = assetCache.get(server.id);
   return {
     ...server,
-    status: cached || createPendingStatus(server)
+    status: cached || createPendingStatus(server),
+    assets: publicAssetStatus(assets || createPendingAssetStatus(), options.includeAssetDetails)
+  };
+}
+
+function publicAssetStatus(assets, includeDetails) {
+  const modelItems = assets.modelItems || [];
+  const dockerImages = assets.dockerImages || [];
+  const summary = {
+    state: assets.state,
+    updatedAt: assets.updatedAt,
+    latencyMs: assets.latencyMs,
+    paths: assets.paths,
+    modelCount: assets.modelCount || modelItems.length,
+    dockerCount: assets.dockerCount || dockerImages.length,
+    searchText: assetSearchText(modelItems, dockerImages),
+    error: assets.error || null
+  };
+  if (includeDetails) {
+    summary.modelItems = modelItems;
+    summary.dockerImages = dockerImages;
+  } else {
+    summary.modelItems = [];
+    summary.dockerImages = [];
+  }
+  return summary;
+}
+
+function assetSearchText(modelItems, dockerImages) {
+  return [
+    ...modelItems.flatMap((item) => [item.name, item.path, item.root]),
+    ...dockerImages.flatMap((image) => [image.repository, image.tag, image.imageId])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 12000);
+}
+
+function createPendingAssetStatus() {
+  return {
+    state: "pending",
+    updatedAt: null,
+    latencyMs: null,
+    paths: ASSET_PATHS,
+    modelCount: 0,
+    dockerCount: 0,
+    modelItems: [],
+    dockerImages: [],
+    error: null
   };
 }
 
@@ -177,7 +296,7 @@ async function refreshAll(options = {}) {
   }
   const servers = loadServers();
   refreshInFlightIncludesModels = includeModels;
-  refreshInFlight = Promise.all(servers.map((server) => refreshServer(server, { includeModels })))
+  refreshInFlight = mapWithConcurrency(servers, REFRESH_CONCURRENCY, (server) => refreshServer(server, { includeModels }))
     .then((results) => {
       lastRefresh = new Date().toISOString();
       return results;
@@ -187,6 +306,35 @@ async function refreshAll(options = {}) {
       refreshInFlightIncludesModels = false;
     });
   return refreshInFlight;
+}
+
+async function refreshAssetsAll() {
+  if (assetRefreshInFlight) return assetRefreshInFlight;
+  const servers = loadServers();
+  assetRefreshInFlight = mapWithConcurrency(servers, ASSET_CONCURRENCY, refreshServerAssets)
+    .then((results) => {
+      lastAssetRefresh = new Date().toISOString();
+      return results;
+    })
+    .finally(() => {
+      assetRefreshInFlight = null;
+    });
+  return assetRefreshInFlight;
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(limit, items.length);
+  const runners = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const current = nextIndex;
+      nextIndex += 1;
+      results[current] = await worker(items[current], current);
+    }
+  });
+  await Promise.all(runners);
+  return results;
 }
 
 async function refreshServer(server, options = {}) {
@@ -253,7 +401,40 @@ async function refreshServer(server, options = {}) {
   }
 }
 
-function runProbeCommand(server, remoteCommand = buildRemoteCommand(server.command)) {
+async function refreshServerAssets(server) {
+  const started = Date.now();
+  try {
+    const output = await runProbeCommand(server, buildAssetCommand(), ASSET_SSH_TIMEOUT_MS);
+    const parsed = parseAssetOutput(output.stdout);
+    const status = {
+      state: "online",
+      updatedAt: new Date().toISOString(),
+      latencyMs: Date.now() - started,
+      paths: ASSET_PATHS,
+      modelCount: parsed.modelItems.length,
+      dockerCount: parsed.dockerImages.length,
+      modelItems: parsed.modelItems,
+      dockerImages: parsed.dockerImages,
+      error: null
+    };
+    assetCache.set(server.id, status);
+    return { id: server.id, ok: true };
+  } catch (error) {
+    const previous = assetCache.get(server.id) || createPendingAssetStatus();
+    const status = {
+      ...previous,
+      state: "failed",
+      updatedAt: new Date().toISOString(),
+      latencyMs: Date.now() - started,
+      paths: ASSET_PATHS,
+      error: error.message
+    };
+    assetCache.set(server.id, status);
+    return { id: server.id, ok: false, error: error.message };
+  }
+}
+
+function runProbeCommand(server, remoteCommand = buildRemoteCommand(server.command), timeoutMs = SSH_TIMEOUT_MS) {
   const target = server.user ? `${server.user}@${server.host}` : server.host;
   const sshPath = process.env.SSH_PATH || (process.platform === "win32" ? "C:\\Windows\\System32\\OpenSSH\\ssh.exe" : "ssh");
   const args = [
@@ -262,7 +443,7 @@ function runProbeCommand(server, remoteCommand = buildRemoteCommand(server.comma
     "-o",
     "BatchMode=yes",
     "-o",
-    `ConnectTimeout=${Math.ceil(SSH_TIMEOUT_MS / 1000)}`,
+    `ConnectTimeout=${Math.ceil(timeoutMs / 1000)}`,
     "-o",
     "StrictHostKeyChecking=accept-new",
     target,
@@ -279,8 +460,8 @@ function runProbeCommand(server, remoteCommand = buildRemoteCommand(server.comma
       if (settled) return;
       settled = true;
       child.kill();
-      reject(new Error(`SSH 超时 (${Math.ceil(SSH_TIMEOUT_MS / 1000)}s)`));
-    }, SSH_TIMEOUT_MS);
+      reject(new Error(`SSH 超时 (${Math.ceil(timeoutMs / 1000)}s)`));
+    }, timeoutMs);
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString("utf8");
@@ -332,6 +513,34 @@ function buildModelCommand(command) {
     ].join(" ");
   }
   return buildHySmiCommand("--showproductname");
+}
+
+function buildAssetCommand() {
+  const paths = ASSET_PATHS.length ? ASSET_PATHS : ["/models", "/public", "/data"];
+  const pathList = paths.map(shellQuote).join(" ");
+  const perPathLimit = Math.max(20, Math.ceil(ASSET_MAX_ITEMS / paths.length));
+  const modelCommand = [
+    `for p in ${pathList}; do`,
+    `if [ -d "$p" ]; then`,
+    `{`,
+    `find "$p" -mindepth 1 -maxdepth 2 -type d ! -name '.*' ! -name '__pycache__' -printf 'MODEL\\t%p\\td\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
+    `find "$p" -mindepth 1 -maxdepth 1 -type f \\( -iname '*.gguf' -o -iname '*.safetensors' -o -iname '*.bin' -o -iname '*.onnx' -o -iname '*.pt' -o -iname '*.pth' -o -iname '*.ckpt' \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
+    `} | head -n ${perPathLimit};`,
+    `fi;`,
+    `done | head -n ${ASSET_MAX_ITEMS}`
+  ].join(" ");
+  const dockerCommand = [
+    "docker images",
+    "--format 'DOCKER\\t{{.Repository}}\\t{{.Tag}}\\t{{.ID}}\\t{{.Size}}\\t{{.CreatedSince}}'",
+    `2>/dev/null | head -n ${ASSET_MAX_ITEMS}`
+  ].join(" ");
+  return [
+    "printf '__GPU_MONITOR_MODELS__\\n';",
+    modelCommand,
+    "; printf '__GPU_MONITOR_DOCKER__\\n';",
+    dockerCommand,
+    "|| true"
+  ].join(" ");
 }
 
 function buildHySmiCommand(args) {
@@ -437,6 +646,82 @@ function parseModelOutput(output, command) {
     return parseNvidiaModels(output);
   }
   return parseHyProductNames(output);
+}
+
+function parseAssetOutput(output) {
+  const modelItems = [];
+  const dockerImages = [];
+  let section = "";
+  const lines = String(output || "").split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line === "__GPU_MONITOR_MODELS__") {
+      section = "models";
+      continue;
+    }
+    if (line === "__GPU_MONITOR_DOCKER__") {
+      section = "docker";
+      continue;
+    }
+    if (section === "models" && line.startsWith("MODEL\t")) {
+      const parts = line.split("\t");
+      const filePath = parts[1] || "";
+      const type = parts[2] === "f" ? "file" : "dir";
+      const modifiedAt = parts[3] || "";
+      const name = path.posix.basename(filePath.replace(/\\/g, "/"));
+      if (filePath && name) {
+        modelItems.push({
+          name: normalizeAssetName(name),
+          path: filePath,
+          root: assetRoot(filePath),
+          type,
+          modifiedAt
+        });
+      }
+      continue;
+    }
+    if (section === "docker" && line.startsWith("DOCKER\t")) {
+      const parts = line.split("\t");
+      const repository = normalizeAssetName(parts[1]);
+      if (!repository || repository === "<none>") continue;
+      dockerImages.push({
+        repository,
+        tag: normalizeAssetName(parts[2]) || "<none>",
+        imageId: normalizeAssetName(parts[3]),
+        size: normalizeAssetName(parts[4]),
+        created: normalizeAssetName(parts.slice(5).join(" "))
+      });
+    }
+  }
+
+  return {
+    modelItems: dedupeBy(modelItems, (item) => `${item.path}:${item.type}`).slice(0, ASSET_MAX_ITEMS),
+    dockerImages: dedupeBy(dockerImages, (item) => `${item.repository}:${item.tag}:${item.imageId}`).slice(0, ASSET_MAX_ITEMS)
+  };
+}
+
+function normalizeAssetName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function assetRoot(filePath) {
+  const normalized = String(filePath || "").replace(/\\/g, "/");
+  const root = ASSET_PATHS.find((assetPath) => normalized === assetPath || normalized.startsWith(`${assetPath}/`));
+  return root || normalized.split("/").slice(0, 2).join("/") || "/";
+}
+
+function dedupeBy(items, keyFn) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    const key = keyFn(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
 }
 
 function parseNvidiaModels(output) {
@@ -716,12 +1001,30 @@ async function handleApi(req, res) {
   const parts = url.pathname.split("/").filter(Boolean);
 
   if (req.method === "GET" && url.pathname === "/api/servers") {
-    const servers = loadServers().map(publicServer);
+    const includeAssetDetails = url.searchParams.get("assetDetails") === "1";
+    const servers = loadServers().map((server) => publicServer(server, { includeAssetDetails }));
     sendJson(res, 200, {
       servers,
       lastRefresh,
+      lastAssetRefresh,
       pollIntervalMs: POLL_INTERVAL_MS,
-      refreshing: Boolean(refreshInFlight)
+      refreshing: Boolean(refreshInFlight),
+      assetRefreshing: Boolean(assetRefreshInFlight),
+      assetRefreshIntervalMs: ASSET_REFRESH_INTERVAL_MS,
+      assetPaths: ASSET_PATHS
+    });
+    return;
+  }
+
+  if (req.method === "GET" && parts[0] === "api" && parts[1] === "servers" && parts[2] && parts[3] === "assets") {
+    const servers = loadServers();
+    const server = servers.find((item) => item.id === parts[2]);
+    if (!server) {
+      sendJson(res, 404, { error: "服务器不存在" });
+      return;
+    }
+    sendJson(res, 200, {
+      assets: publicAssetStatus(assetCache.get(server.id) || createPendingAssetStatus(), true)
     });
     return;
   }
@@ -788,6 +1091,12 @@ async function handleApi(req, res) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/assets/refresh") {
+    const result = await refreshAssetsAll();
+    sendJson(res, 200, { ok: true, result, lastAssetRefresh });
+    return;
+  }
+
   sendJson(res, 404, { error: "API 不存在" });
 }
 
@@ -803,10 +1112,20 @@ const server = http.createServer((req, res) => {
 });
 
 ensureDataFile();
+backupServerConfig("startup");
 refreshAll().catch((error) => console.error(error));
+setTimeout(() => {
+  refreshAssetsAll().catch((error) => console.error(error));
+}, 2000);
 setInterval(() => {
   refreshAll().catch((error) => console.error(error));
 }, POLL_INTERVAL_MS);
+setInterval(() => {
+  backupServerConfig("scheduled");
+}, BACKUP_INTERVAL_MS);
+setInterval(() => {
+  refreshAssetsAll().catch((error) => console.error(error));
+}, ASSET_REFRESH_INTERVAL_MS);
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`GPU/DCU monitor is running at http://localhost:${PORT}`);

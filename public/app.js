@@ -5,6 +5,8 @@ const state = {
   query: "",
   selectedId: null,
   pollIntervalMs: 10000,
+  assetRefreshing: false,
+  assetDetailLoading: false,
   timer: null
 };
 
@@ -37,6 +39,7 @@ document.querySelector("#addServerBtn").addEventListener("click", () => openDial
 document.querySelector("#emptyAddBtn").addEventListener("click", () => openDialog());
 document.querySelector("#closeDialogBtn").addEventListener("click", () => els.dialog.close());
 document.querySelector("#refreshBtn").addEventListener("click", manualRefresh);
+document.querySelector("#assetRefreshBtn").addEventListener("click", refreshAssets);
 document.querySelectorAll(".filter").forEach((button) => {
   button.addEventListener("click", () => {
     state.filter = button.dataset.filter;
@@ -58,16 +61,35 @@ async function loadServers() {
     const payload = await requestJson("/api/servers");
     state.servers = payload.servers || [];
     state.pollIntervalMs = payload.pollIntervalMs || state.pollIntervalMs;
+    state.assetRefreshing = Boolean(payload.assetRefreshing);
     els.lastRefresh.textContent = payload.lastRefresh ? `更新 ${formatTime(payload.lastRefresh)}` : "等待刷新";
     if (!state.selectedId && state.servers[0]) state.selectedId = state.servers[0].id;
     if (state.selectedId && !state.servers.some((server) => server.id === state.selectedId)) {
       state.selectedId = state.servers[0]?.id || null;
     }
     render();
+    loadSelectedAssets();
     scheduleNextLoad();
   } catch (error) {
     showToast(error.message);
     scheduleNextLoad();
+  }
+}
+
+async function loadSelectedAssets() {
+  if (!state.selectedId || state.assetDetailLoading) return;
+  state.assetDetailLoading = true;
+  try {
+    const payload = await requestJson(`/api/servers/${encodeURIComponent(state.selectedId)}/assets`);
+    const server = state.servers.find((item) => item.id === state.selectedId);
+    if (server && payload.assets) {
+      server.assets = payload.assets;
+      renderDetail();
+    }
+  } catch (error) {
+    console.warn(error);
+  } finally {
+    state.assetDetailLoading = false;
   }
 }
 
@@ -83,6 +105,20 @@ async function manualRefresh() {
     await requestJson("/api/refresh", { method: "POST" });
     await loadServers();
     showToast("刷新完成");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function refreshAssets() {
+  const button = document.querySelector("#assetRefreshBtn");
+  button.disabled = true;
+  try {
+    await requestJson("/api/assets/refresh", { method: "POST" });
+    await loadServers();
+    showToast("模型资产刷新完成");
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -165,6 +201,8 @@ function renderStats() {
   setText("#countFree", totals.freeServers);
   setText("#countBusy", totals.busyServers);
   setText("#countOffline", totals.offlineServers);
+  const assetButton = document.querySelector("#assetRefreshBtn");
+  if (assetButton) assetButton.disabled = state.assetRefreshing;
 }
 
 function renderGrid() {
@@ -183,12 +221,14 @@ function renderGrid() {
     card.addEventListener("click", () => {
       state.selectedId = server.id;
       render();
+      loadSelectedAssets();
     });
     card.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         state.selectedId = server.id;
         render();
+        loadSelectedAssets();
       }
     });
     card.querySelector(".edit-card").addEventListener("click", (event) => {
@@ -202,6 +242,7 @@ function renderGrid() {
 
 function serverCardHtml(server) {
   const status = server.status || {};
+  const assets = server.assets || {};
   const kind = getServerKind(server);
   const serverLevel = serverOccupancyClass(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
@@ -224,6 +265,11 @@ function serverCardHtml(server) {
     </div>
     <div class="gpu-grid">
       ${gpuChips(status.gpus || [], totalCount, kind)}
+    </div>
+    <div class="asset-summary ${assets.state === "failed" ? "failed" : ""}">
+      <span>模型 ${assets.modelCount || 0}</span>
+      <span>镜像 ${assets.dockerCount || 0}</span>
+      <em>${assetUpdatedText(assets)}</em>
     </div>
     <div class="tag-list">
       ${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
@@ -278,6 +324,7 @@ function renderDetail() {
   }
 
   const status = server.status || {};
+  const assets = server.assets || {};
   const kind = getServerKind(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
   els.detail.innerHTML = `
@@ -300,8 +347,64 @@ function renderDetail() {
     <div class="gpu-list">
       ${(status.gpus || []).map(gpuRowHtml).join("")}
     </div>
+    ${assetPanelHtml(assets)}
   `;
   document.querySelector("#detailEditBtn").addEventListener("click", () => openDialog(server));
+}
+
+function assetPanelHtml(assets) {
+  const modelItems = assets.modelItems || [];
+  const dockerImages = assets.dockerImages || [];
+  const modelList = modelItems.length
+    ? modelItems.slice(0, 80).map(modelItemHtml).join("")
+    : assets.modelCount
+      ? `<div class="asset-empty">正在加载模型详情</div>`
+    : `<div class="asset-empty">未发现模型目录或文件</div>`;
+  const dockerList = dockerImages.length
+    ? dockerImages.slice(0, 80).map(dockerImageHtml).join("")
+    : assets.dockerCount
+      ? `<div class="asset-empty">正在加载镜像详情</div>`
+    : `<div class="asset-empty">未发现 Docker 镜像</div>`;
+
+  return `
+    <section class="asset-panel">
+      <div class="asset-head">
+        <div>
+          <p class="eyebrow">模型资产</p>
+          <h3>模型路径与镜像</h3>
+        </div>
+        <span>${assetUpdatedText(assets)}</span>
+      </div>
+      ${assets.error ? `<div class="asset-error">${escapeHtml(assets.error)}</div>` : ""}
+      <div class="asset-columns">
+        <div class="asset-column">
+          <div class="asset-title"><strong>挂载目录模型</strong><span>${modelItems.length}</span></div>
+          <div class="asset-list">${modelList}</div>
+        </div>
+        <div class="asset-column">
+          <div class="asset-title"><strong>Docker Images</strong><span>${dockerImages.length}</span></div>
+          <div class="asset-list">${dockerList}</div>
+        </div>
+      </div>
+    </section>`;
+}
+
+function modelItemHtml(item) {
+  return `
+    <div class="asset-item">
+      <strong>${escapeHtml(item.name || "-")}</strong>
+      <span>${escapeHtml(item.path || "-")}</span>
+      <em>${escapeHtml(item.root || "-")}${item.type === "file" ? " · 文件" : " · 目录"}</em>
+    </div>`;
+}
+
+function dockerImageHtml(image) {
+  return `
+    <div class="asset-item">
+      <strong>${escapeHtml(image.repository || "-")}:${escapeHtml(image.tag || "-")}</strong>
+      <span>${escapeHtml(image.imageId || "-")} · ${escapeHtml(image.size || "-")}</span>
+      <em>${escapeHtml(image.created || "-")}</em>
+    </div>`;
 }
 
 function gpuRowHtml(gpu) {
@@ -377,9 +480,33 @@ function filteredServers() {
     const kind = getServerKind(server);
     const matchesFilter = state.filter === "all" || state.filter === kind;
     const matchesGroup = state.groupFilter === "all" || serverGroup(server) === state.groupFilter;
-    const text = [server.name, server.host, server.user, serverGroup(server), modelSummary(server), ...(server.tags || [])].join(" ").toLowerCase();
+    const text = [
+      server.name,
+      server.host,
+      server.user,
+      serverGroup(server),
+      modelSummary(server),
+      ...(server.tags || []),
+      assetSearchText(server)
+    ]
+      .join(" ")
+      .toLowerCase();
     return matchesFilter && matchesGroup && (!state.query || text.includes(state.query));
   });
+}
+
+function assetSearchText(server) {
+  const assets = server.assets || {};
+  if (assets.searchText) return assets.searchText;
+  const modelText = (assets.modelItems || []).flatMap((item) => [item.name, item.path, item.root]);
+  const dockerText = (assets.dockerImages || []).flatMap((image) => [image.repository, image.tag, image.imageId]);
+  return [...modelText, ...dockerText].filter(Boolean).join(" ");
+}
+
+function assetUpdatedText(assets) {
+  if (!assets || !assets.updatedAt) return "未盘点";
+  if (assets.state === "failed") return "盘点失败";
+  return `盘点 ${formatTime(assets.updatedAt)}`;
 }
 
 function serverGroup(server) {

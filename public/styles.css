@@ -303,7 +303,7 @@ h2 {
 .server-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
-  grid-auto-rows: minmax(340px, auto);
+  grid-auto-rows: minmax(368px, auto);
   gap: 14px;
   align-items: stretch;
   flex: 1 1 auto;
@@ -316,7 +316,7 @@ h2 {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 340px;
+  min-height: 368px;
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -573,6 +573,40 @@ h2 {
   margin-top: 12px;
 }
 
+.asset-summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.asset-summary span {
+  border-radius: 999px;
+  background: #eef6f6;
+  color: var(--teal-dark);
+  padding: 3px 7px;
+  font-weight: 800;
+}
+
+.asset-summary em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-style: normal;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-summary.failed span {
+  background: #fde8e8;
+  color: #9f2f2f;
+}
+
 .tag {
   max-width: 100%;
   border-radius: 999px;
@@ -678,6 +712,97 @@ h2 {
 .gpu-list {
   display: grid;
   gap: 10px;
+}
+
+.asset-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.asset-head,
+.asset-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.asset-head h3 {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.asset-head span,
+.asset-title span,
+.asset-item span,
+.asset-item em,
+.asset-empty,
+.asset-error {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.asset-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.asset-column {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.asset-title {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+
+.asset-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.asset-item {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  padding: 9px;
+}
+
+.asset-item strong,
+.asset-item span,
+.asset-item em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-item em {
+  font-style: normal;
+}
+
+.asset-empty,
+.asset-error {
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.asset-error {
+  border-color: #f3b2b2;
+  background: #fde8e8;
+  color: #9f2f2f;
 }
 
 .gpu-row {
