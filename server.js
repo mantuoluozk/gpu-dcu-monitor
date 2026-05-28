@@ -320,7 +320,7 @@ function buildRemoteCommand(command) {
       "--format=csv,noheader,nounits"
     ].join(" ");
   }
-  return "hy-smi";
+  return buildHySmiCommand("");
 }
 
 function buildModelCommand(command) {
@@ -331,7 +331,16 @@ function buildModelCommand(command) {
       "--format=csv,noheader,nounits"
     ].join(" ");
   }
-  return "hy-smi --showproductname";
+  return buildHySmiCommand("--showproductname");
+}
+
+function buildHySmiCommand(args) {
+  const command = ["hy-smi", args].filter(Boolean).join(" ");
+  return `(${command} 2>/dev/null || bash -ilc ${shellQuote(command)})`;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
 function persistDetectedServerInfo(serverId, detected) {
