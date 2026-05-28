@@ -1,14 +1,14 @@
-# Changelog
+# 更新记录
 
 ## 2026-05-28
 
-- Added a fallback for `hy-smi` collection through a login shell. This supports servers where `hy-smi` is only available after shell startup scripts load the DTK environment.
-- Verified local access to `10.17.26.107` and prepared the same collection behavior for the deployed service.
+- 新增 `hy-smi` 登录 Shell 兜底采集方式，兼容需要加载启动脚本后才能使用 DTK 环境的服务器。
+- 验证本地可以访问 `10.17.26.107`，并把同样的采集方式同步到公共部署服务。
 
 ## 2026-05-27
 
-- Added compact wide-screen server cards and fixed card content overflow.
-- Increased default SSH/collection timeout to 20 seconds for slower NVIDIA `nvidia-smi` responses.
-- Added GPU/DCU model persistence and manual model refresh behavior.
-- Added server grouping and group filters.
-- Added deployment documentation and UI screenshots to the README.
+- 优化宽屏下的服务器卡片布局，修复卡片内容超出边界的问题。
+- 将默认 SSH/采集超时时间调整为 20 秒，减少 NVIDIA `nvidia-smi` 响应较慢时误判连接失败的情况。
+- 新增 GPU/DCU 型号持久化，并改为添加、编辑或手动刷新时更新型号信息。
+- 新增服务器分组和分组筛选功能。
+- 更新 README，补充部署说明和界面截图。
