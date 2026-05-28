@@ -1,12 +1,19 @@
 const state = {
   servers: [],
+  view: "dashboard",
   filter: "all",
   groupFilter: "all",
   query: "",
+  assetType: "all",
+  assetState: "all",
+  assetResults: [],
+  assetTotalMatches: 0,
+  assetSearching: false,
   selectedId: null,
   pollIntervalMs: 10000,
   assetRefreshing: false,
   assetDetailLoading: false,
+  assetSearchTimer: null,
   timer: null
 };
 
@@ -14,10 +21,16 @@ const els = {
   grid: document.querySelector("#serverGrid"),
   empty: document.querySelector("#emptyState"),
   detail: document.querySelector("#detailPanel"),
+  pageTitle: document.querySelector("#pageTitle"),
   groupFilters: document.querySelector("#groupFilters"),
   groupOptions: document.querySelector("#groupOptions"),
   lastRefresh: document.querySelector("#lastRefresh"),
   search: document.querySelector("#searchInput"),
+  searchScope: document.querySelector("#searchScope"),
+  stats: document.querySelector(".stats"),
+  assetSearchPanel: document.querySelector("#assetSearchPanel"),
+  assetSearchSummary: document.querySelector("#assetSearchSummary"),
+  assetResultList: document.querySelector("#assetResultList"),
   toast: document.querySelector("#toast"),
   dialog: document.querySelector("#serverDialog"),
   form: document.querySelector("#serverForm"),
@@ -40,6 +53,22 @@ document.querySelector("#emptyAddBtn").addEventListener("click", () => openDialo
 document.querySelector("#closeDialogBtn").addEventListener("click", () => els.dialog.close());
 document.querySelector("#refreshBtn").addEventListener("click", manualRefresh);
 document.querySelector("#assetRefreshBtn").addEventListener("click", refreshAssets);
+document.querySelector("#dashboardViewBtn").addEventListener("click", () => setView("dashboard"));
+document.querySelector("#assetViewBtn").addEventListener("click", () => setView("assets"));
+document.querySelectorAll(".asset-filter").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.assetType = button.dataset.assetType;
+    document.querySelectorAll(".asset-filter").forEach((item) => item.classList.toggle("active", item === button));
+    searchAssets();
+  });
+});
+document.querySelectorAll(".asset-state").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.assetState = button.dataset.assetState;
+    document.querySelectorAll(".asset-state").forEach((item) => item.classList.toggle("active", item === button));
+    searchAssets();
+  });
+});
 document.querySelectorAll(".filter").forEach((button) => {
   button.addEventListener("click", () => {
     state.filter = button.dataset.filter;
@@ -49,7 +78,11 @@ document.querySelectorAll(".filter").forEach((button) => {
 });
 els.search.addEventListener("input", () => {
   state.query = els.search.value.trim().toLowerCase();
-  render();
+  if (state.view === "assets") {
+    queueAssetSearch();
+  } else {
+    render();
+  }
 });
 els.form.addEventListener("submit", saveServer);
 els.deleteBtn.addEventListener("click", deleteSelectedServer);
@@ -76,6 +109,16 @@ async function loadServers() {
   }
 }
 
+function setView(view) {
+  state.view = view;
+  document.querySelector("#dashboardViewBtn").classList.toggle("active", view === "dashboard");
+  document.querySelector("#assetViewBtn").classList.toggle("active", view === "assets");
+  els.search.placeholder = view === "assets" ? "搜索模型、路径、镜像 tag" : "搜索服务器、IP、模型、镜像";
+  els.searchScope.textContent = view === "assets" ? "模型搜索" : "资源搜索";
+  if (view === "assets") searchAssets();
+  render();
+}
+
 async function loadSelectedAssets() {
   if (!state.selectedId || state.assetDetailLoading) return;
   state.assetDetailLoading = true;
@@ -90,6 +133,42 @@ async function loadSelectedAssets() {
     console.warn(error);
   } finally {
     state.assetDetailLoading = false;
+  }
+}
+
+function queueAssetSearch() {
+  window.clearTimeout(state.assetSearchTimer);
+  state.assetSearchTimer = window.setTimeout(searchAssets, 220);
+  render();
+}
+
+async function searchAssets() {
+  if (state.view !== "assets") return;
+  const query = state.query.trim();
+  if (!query) {
+    state.assetResults = [];
+    state.assetTotalMatches = 0;
+    state.assetSearching = false;
+    renderAssetSearch();
+    return;
+  }
+  state.assetSearching = true;
+  renderAssetSearch();
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      type: state.assetType,
+      state: state.assetState,
+      group: state.groupFilter
+    });
+    const payload = await requestJson(`/api/assets/search?${params.toString()}`);
+    state.assetResults = payload.results || [];
+    state.assetTotalMatches = payload.totalMatches || 0;
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.assetSearching = false;
+    renderAssetSearch();
   }
 }
 
@@ -118,6 +197,7 @@ async function refreshAssets() {
   try {
     await requestJson("/api/assets/refresh", { method: "POST" });
     await loadServers();
+    if (state.view === "assets") await searchAssets();
     showToast("模型资产刷新完成");
   } catch (error) {
     showToast(error.message);
@@ -127,10 +207,23 @@ async function refreshAssets() {
 }
 
 function render() {
+  renderViewShell();
   renderStats();
   renderGroups();
   renderGrid();
+  renderAssetSearch();
   renderDetail();
+}
+
+function renderViewShell() {
+  const showingAssets = state.view === "assets";
+  els.pageTitle.textContent = showingAssets ? "模型镜像检索" : "服务器占用情况";
+  els.searchScope.textContent = showingAssets ? "模型搜索" : "资源搜索";
+  els.stats.classList.toggle("hidden", showingAssets);
+  els.groupFilters.classList.toggle("hidden", false);
+  els.grid.classList.toggle("hidden", showingAssets || state.servers.length === 0);
+  els.empty.classList.toggle("hidden", showingAssets || state.servers.length !== 0);
+  els.assetSearchPanel.classList.toggle("hidden", !showingAssets);
 }
 
 function renderGroups() {
@@ -147,6 +240,7 @@ function renderGroups() {
     els.groupFilters.querySelectorAll(".group-filter").forEach((button) => {
       button.addEventListener("click", () => {
         state.groupFilter = button.dataset.group;
+        if (state.view === "assets") searchAssets();
         render();
       });
     });
@@ -208,8 +302,8 @@ function renderStats() {
 function renderGrid() {
   const servers = filteredServers();
   els.grid.innerHTML = "";
-  els.empty.classList.toggle("hidden", state.servers.length !== 0);
-  els.grid.classList.toggle("hidden", state.servers.length === 0);
+  els.empty.classList.toggle("hidden", state.view === "assets" || state.servers.length !== 0);
+  els.grid.classList.toggle("hidden", state.view === "assets" || state.servers.length === 0);
 
   for (const server of servers) {
     const status = server.status || {};
@@ -238,6 +332,81 @@ function renderGrid() {
     card.style.setProperty("--busy", `${busyPercent}%`);
     els.grid.appendChild(card);
   }
+}
+
+function renderAssetSearch() {
+  if (!els.assetSearchPanel || state.view !== "assets") return;
+  const query = state.query.trim();
+  if (!query) {
+    els.assetSearchSummary.textContent = "输入模型名、路径或镜像名称开始查找。";
+    els.assetResultList.innerHTML = `
+      <div class="asset-search-empty">
+        <strong>可以搜索 Qwen、DeepSeek、vllm、镜像 tag 或完整路径</strong>
+        <span>结果会按服务器聚合，并显示这台机器当前卡占用情况。</span>
+      </div>`;
+    return;
+  }
+
+  if (state.assetSearching) {
+    els.assetSearchSummary.textContent = `正在查找“${query}”...`;
+    return;
+  }
+
+  els.assetSearchSummary.textContent = state.assetResults.length
+    ? `找到 ${state.assetTotalMatches} 条匹配，分布在 ${state.assetResults.length} 台服务器。`
+    : `没有找到“${query}”相关的模型或镜像。`;
+
+  els.assetResultList.innerHTML = state.assetResults.length
+    ? state.assetResults.map(assetResultGroupHtml).join("")
+    : `<div class="asset-search-empty"><strong>没有匹配结果</strong><span>可以先点“刷新模型资产”，或换一个模型名 / 镜像 tag。</span></div>`;
+
+  els.assetResultList.querySelectorAll("[data-copy]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      copyText(button.dataset.copy, button.dataset.copyLabel || "内容");
+    });
+  });
+}
+
+function assetResultGroupHtml(group) {
+  const server = group.server || {};
+  const stateClass = `status-${server.state || "pending"}`;
+  const sshCommand = `ssh ${server.user || "root"}@${server.host}`;
+  return `
+    <article class="asset-result-card">
+      <div class="asset-result-head">
+        <div>
+          <div class="asset-server-title">${escapeHtml(server.name || server.host)}</div>
+          <div class="asset-server-meta">
+            <span>${escapeHtml(server.group || "未分组")}</span>
+            <span>${escapeHtml(server.host)}:${escapeHtml(server.port || 22)}</span>
+            <span>${escapeHtml(server.summary || "-")}</span>
+          </div>
+        </div>
+        <span class="status-pill ${stateClass}">${kindLabel(server.state)}</span>
+      </div>
+      <div class="asset-copy-row">
+        <button class="mini-copy" data-copy="${escapeAttr(server.host || "")}" data-copy-label="IP" type="button">复制 IP</button>
+        <button class="mini-copy" data-copy="${escapeAttr(sshCommand)}" data-copy-label="SSH 命令" type="button">复制 SSH</button>
+      </div>
+      <div class="asset-match-list">
+        ${(group.matches || []).map(assetMatchHtml).join("")}
+      </div>
+    </article>`;
+}
+
+function assetMatchHtml(match) {
+  const label = match.type === "docker" ? "镜像" : "模型";
+  return `
+    <div class="asset-match ${match.type}">
+      <span class="asset-kind">${label}</span>
+      <div class="asset-match-main">
+        <strong>${highlightMatch(match.label || "-")}</strong>
+        <span>${highlightMatch(match.value || "-")}</span>
+        <em>${escapeHtml(match.meta || "")}</em>
+      </div>
+      <button class="mini-copy" data-copy="${escapeAttr(match.copyText || match.value || "")}" data-copy-label="${label}" type="button">复制</button>
+    </div>`;
 }
 
 function serverCardHtml(server) {
@@ -480,18 +649,32 @@ function filteredServers() {
     const kind = getServerKind(server);
     const matchesFilter = state.filter === "all" || state.filter === kind;
     const matchesGroup = state.groupFilter === "all" || serverGroup(server) === state.groupFilter;
-    const text = [
-      server.name,
-      server.host,
-      server.user,
-      serverGroup(server),
-      modelSummary(server),
-      ...(server.tags || []),
-      assetSearchText(server)
-    ]
-      .join(" ")
-      .toLowerCase();
-    return matchesFilter && matchesGroup && (!state.query || text.includes(state.query));
+    return matchesFilter && matchesGroup && matchesDashboardQuery(server, state.query);
+  });
+}
+
+function matchesDashboardQuery(server, query) {
+  const terms = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const fields = [
+    server.name,
+    server.host,
+    server.user,
+    serverGroup(server),
+    modelSummary(server),
+    ...(server.tags || [])
+  ].map((value) => String(value || "").toLowerCase());
+  const text = fields.join(" ");
+  const tokens = fields.flatMap((field) => field.match(/[a-z0-9]+/g) || []);
+
+  return terms.every((term) => {
+    if (term.includes(".") || /[\u4e00-\u9fff]/.test(term)) {
+      return text.includes(term);
+    }
+    if (/^[a-z0-9]+$/.test(term)) {
+      return tokens.some((token) => token === term || (term.length <= 4 && token.startsWith(term)));
+    }
+    return text.includes(term);
   });
 }
 
@@ -621,6 +804,51 @@ function setText(selector, value) {
 
 function formatTime(value) {
   return new Date(value).toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+async function copyText(text, label) {
+  if (!text) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      fallbackCopyText(text);
+    }
+    showToast(`${label}已复制`);
+  } catch (error) {
+    try {
+      fallbackCopyText(text);
+      showToast(`${label}已复制`);
+    } catch {
+      showToast("复制失败");
+    }
+  }
+}
+
+function fallbackCopyText(text) {
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.left = "-9999px";
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand("copy");
+  document.body.removeChild(input);
+}
+
+function highlightMatch(value) {
+  const text = escapeHtml(value);
+  const query = state.query.trim();
+  if (!query) return text;
+  const firstTerm = query.split(/\s+/).filter(Boolean)[0];
+  if (!firstTerm) return text;
+  const escapedTerm = firstTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(${escapedTerm})`, "ig"), "<mark>$1</mark>");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value);
 }
 
 function escapeHtml(value) {

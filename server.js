@@ -12,6 +12,7 @@ const ASSET_REFRESH_INTERVAL_MS = Number(process.env.ASSET_REFRESH_INTERVAL_MS |
 const ASSET_SSH_TIMEOUT_MS = Number(process.env.ASSET_SSH_TIMEOUT_MS || 30000);
 const ASSET_CONCURRENCY = clampInt(process.env.ASSET_CONCURRENCY, 1, 16, 3);
 const ASSET_MAX_ITEMS = clampInt(process.env.ASSET_MAX_ITEMS, 20, 1000, 160);
+const ASSET_SEARCH_MAX_RESULTS = clampInt(process.env.ASSET_SEARCH_MAX_RESULTS, 20, 2000, 300);
 const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || "/models,/public,/data");
 const BACKUP_INTERVAL_MS = Number(process.env.BACKUP_INTERVAL_MS || 24 * 60 * 60 * 1000);
 const BACKUP_RETENTION = clampInt(process.env.BACKUP_RETENTION, 1, 365, 30);
@@ -519,12 +520,31 @@ function buildAssetCommand() {
   const paths = ASSET_PATHS.length ? ASSET_PATHS : ["/models", "/public", "/data"];
   const pathList = paths.map(shellQuote).join(" ");
   const perPathLimit = Math.max(20, Math.ceil(ASSET_MAX_ITEMS / paths.length));
+  const modelFilePattern = [
+    "-iname '*.gguf'",
+    "-o -iname '*.safetensors'",
+    "-o -iname 'pytorch_model*.bin'",
+    "-o -iname 'model*.bin'",
+    "-o -iname '*.onnx'",
+    "-o -iname '*.pt'",
+    "-o -iname '*.pth'",
+    "-o -iname '*.ckpt'",
+    "-o -iname 'config.json'",
+    "-o -iname 'tokenizer.json'",
+    "-o -iname 'tokenizer.model'",
+    "-o -iname 'generation_config.json'"
+  ].join(" ");
+  const modelNamePattern = "'*qwen*' -o -iname '*deepseek*' -o -iname '*llama*' -o -iname '*chatglm*' -o -iname '*glm*' -o -iname '*baichuan*' -o -iname '*internlm*' -o -iname '*mistral*' -o -iname '*mixtral*' -o -iname '*bert*' -o -iname '*clip*' -o -iname '*whisper*' -o -iname '*stable-diffusion*' -o -iname '*sdxl*'";
   const modelCommand = [
     `for p in ${pathList}; do`,
     `if [ -d "$p" ]; then`,
     `{`,
-    `find "$p" -mindepth 1 -maxdepth 2 -type d ! -name '.*' ! -name '__pycache__' -printf 'MODEL\\t%p\\td\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
-    `find "$p" -mindepth 1 -maxdepth 1 -type f \\( -iname '*.gguf' -o -iname '*.safetensors' -o -iname '*.bin' -o -iname '*.onnx' -o -iname '*.pt' -o -iname '*.pth' -o -iname '*.ckpt' \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
+    `find "$p" -mindepth 1 -maxdepth 2 -type d ! -name '.*' ! -name '__pycache__' | while IFS= read -r d; do`,
+    `if find "$d" -maxdepth 1 -type f \\( ${modelFilePattern} \\) -print -quit 2>/dev/null | grep -q . || find "$d" -maxdepth 0 \\( -iname ${modelNamePattern} \\) -print -quit 2>/dev/null | grep -q .; then`,
+    `mt=$(date -r "$d" '+%Y-%m-%d %H:%M' 2>/dev/null || echo ''); printf 'MODEL\\t%s\\td\\t%s\\n' "$d" "$mt";`,
+    `fi;`,
+    `done;`,
+    `find "$p" -mindepth 1 -maxdepth 1 -type f \\( ${modelFilePattern} \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
     `} | head -n ${perPathLimit};`,
     `fi;`,
     `done | head -n ${ASSET_MAX_ITEMS}`
@@ -722,6 +742,106 @@ function dedupeBy(items, keyFn) {
     result.push(item);
   }
   return result;
+}
+
+function searchAssetInventory(options) {
+  const query = String(options.query || "").trim().toLowerCase();
+  const terms = query.split(/\s+/).filter(Boolean).slice(0, 8);
+  const type = options.type === "model" || options.type === "docker" ? options.type : "all";
+  const stateFilter = ["free", "busy", "offline", "pending"].includes(options.state) ? options.state : "all";
+  const groupFilter = String(options.group || "all").trim();
+  const results = [];
+  let totalMatches = 0;
+
+  if (!terms.length) {
+    return { query, type, state: stateFilter, group: groupFilter, totalMatches: 0, results: [] };
+  }
+
+  for (const server of loadServers()) {
+    const status = statusCache.get(server.id) || createPendingStatus(server);
+    const serverState = serverKindFromStatus(status);
+    const group = normalizeGroup(server.group);
+    if (groupFilter !== "all" && group !== groupFilter) continue;
+    if (stateFilter !== "all" && serverState !== stateFilter) continue;
+
+    const assets = assetCache.get(server.id) || createPendingAssetStatus();
+    const matches = [];
+    if (type === "all" || type === "model") {
+      for (const item of assets.modelItems || []) {
+        const text = [item.name, item.path, item.root, item.type].filter(Boolean).join(" ").toLowerCase();
+        if (matchesTerms(text, terms)) {
+          matches.push({
+            type: "model",
+            label: item.name,
+            value: item.path,
+            meta: `${item.root || "-"} · ${item.type === "file" ? "文件" : "目录"}`,
+            copyText: item.path
+          });
+        }
+      }
+    }
+    if (type === "all" || type === "docker") {
+      for (const image of assets.dockerImages || []) {
+        const imageName = `${image.repository || ""}:${image.tag || ""}`;
+        const text = [imageName, image.imageId, image.size, image.created].filter(Boolean).join(" ").toLowerCase();
+        if (matchesTerms(text, terms)) {
+          matches.push({
+            type: "docker",
+            label: imageName,
+            value: image.imageId || "",
+            meta: [image.size, image.created].filter(Boolean).join(" · "),
+            copyText: imageName
+          });
+        }
+      }
+    }
+
+    if (!matches.length) continue;
+    totalMatches += matches.length;
+    results.push({
+      server: {
+        id: server.id,
+        name: server.name,
+        host: server.host,
+        user: server.user,
+        port: server.port,
+        group,
+        state: serverState,
+        summary: status.summary,
+        busyCount: status.busyCount || 0,
+        totalCount: status.totalCount || server.gpuCount || 0,
+        models: status.models || server.models || []
+      },
+      assets: {
+        updatedAt: assets.updatedAt,
+        modelCount: assets.modelCount || 0,
+        dockerCount: assets.dockerCount || 0,
+        state: assets.state,
+        error: assets.error || null
+      },
+      matches: matches.slice(0, 20)
+    });
+    if (totalMatches >= ASSET_SEARCH_MAX_RESULTS) break;
+  }
+
+  return {
+    query,
+    type,
+    state: stateFilter,
+    group: groupFilter,
+    totalMatches,
+    results: results.slice(0, 80)
+  };
+}
+
+function matchesTerms(text, terms) {
+  return terms.every((term) => text.includes(term));
+}
+
+function serverKindFromStatus(status) {
+  if (status.state === "offline") return "offline";
+  if (status.state === "pending") return "pending";
+  return (status.busyCount || 0) > 0 ? "busy" : "free";
 }
 
 function parseNvidiaModels(output) {
@@ -1013,6 +1133,16 @@ async function handleApi(req, res) {
       assetRefreshIntervalMs: ASSET_REFRESH_INTERVAL_MS,
       assetPaths: ASSET_PATHS
     });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/assets/search") {
+    sendJson(res, 200, searchAssetInventory({
+      query: url.searchParams.get("q") || "",
+      type: url.searchParams.get("type") || "all",
+      state: url.searchParams.get("state") || "all",
+      group: url.searchParams.get("group") || "all"
+    }));
     return;
   }
 

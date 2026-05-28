@@ -49,11 +49,21 @@
         <section class="topline">
           <div>
             <p class="eyebrow">共享测试资源</p>
-            <h2>服务器占用情况</h2>
+            <h2 id="pageTitle">服务器占用情况</h2>
           </div>
-          <div class="search-wrap">
-            <span aria-hidden="true">⌕</span>
-            <input id="searchInput" type="search" placeholder="搜索服务器、IP、模型、镜像" />
+        </section>
+
+        <section class="workbar" aria-label="工作区">
+          <div class="view-tabs" role="tablist" aria-label="视图切换">
+            <button class="view-tab active" id="dashboardViewBtn" type="button">资源看板</button>
+            <button class="view-tab" id="assetViewBtn" type="button">模型镜像检索</button>
+          </div>
+          <div class="search-cluster">
+            <span id="searchScope">资源搜索</span>
+            <div class="search-wrap">
+              <span aria-hidden="true">⌕</span>
+              <input id="searchInput" type="search" placeholder="搜索服务器、IP、模型、镜像" />
+            </div>
           </div>
         </section>
 
@@ -85,6 +95,23 @@
           <h3>添加第一台服务器</h3>
           <p>配置 SSH 登录信息后，看板会定时采集显存和算力占用。</p>
           <button class="primary-action compact" id="emptyAddBtn" type="button">添加服务器</button>
+        </section>
+
+        <section class="asset-search hidden" id="assetSearchPanel" aria-live="polite">
+          <div class="asset-toolbar">
+            <div class="asset-filter-group" role="tablist" aria-label="资产类型">
+              <button class="asset-filter active" data-asset-type="all" type="button">全部</button>
+              <button class="asset-filter" data-asset-type="model" type="button">模型</button>
+              <button class="asset-filter" data-asset-type="docker" type="button">镜像</button>
+            </div>
+            <div class="asset-filter-group" role="tablist" aria-label="服务器状态">
+              <button class="asset-state active" data-asset-state="all" type="button">全部机器</button>
+              <button class="asset-state" data-asset-state="free" type="button">空闲机器</button>
+              <button class="asset-state" data-asset-state="busy" type="button">占用机器</button>
+            </div>
+          </div>
+          <div class="asset-search-summary" id="assetSearchSummary">输入模型名、路径或镜像名称开始查找。</div>
+          <div class="asset-result-list" id="assetResultList"></div>
         </section>
       </main>
 
