@@ -4,3 +4,4 @@ data/servers.json
 *.tar
 *.zip
 .env
+AGENTS.md
