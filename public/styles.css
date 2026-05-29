@@ -102,6 +102,57 @@ h1 {
   font-size: 18px;
 }
 
+.site-switcher {
+  display: grid;
+  gap: 8px;
+}
+
+.site-switcher-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.site-link-list {
+  display: grid;
+  gap: 7px;
+}
+
+.site-link {
+  display: grid;
+  gap: 2px;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  padding: 8px 10px;
+  text-decoration: none;
+}
+
+.site-link:hover,
+.site-link.active {
+  border-color: rgba(15, 159, 154, 0.48);
+  background: #e9f7f5;
+}
+
+.site-link strong,
+.site-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-link strong {
+  font-size: 13px;
+}
+
+.site-link span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 h2 {
   margin-top: 4px;
   font-size: 30px;

@@ -1,0 +1,22 @@
+{
+  "current": {
+    "id": "kunshan",
+    "name": "昆山 / 天津中心",
+    "description": "昆山部署，覆盖昆山和天津服务器",
+    "url": "http://kunshan-monitor.example.local:3066"
+  },
+  "sites": [
+    {
+      "id": "kunshan",
+      "name": "昆山 / 天津中心",
+      "description": "昆山部署，覆盖昆山和天津服务器",
+      "url": "http://kunshan-monitor.example.local:3066"
+    },
+    {
+      "id": "taiyuan",
+      "name": "太原中心",
+      "description": "连接 EasyConnect 后访问",
+      "url": "http://taiyuan-monitor.example.local:3066"
+    }
+  ]
+}

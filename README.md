@@ -27,6 +27,7 @@
 - 盘点每台服务器 `/models`、`/public`、`/data` 等目录下的模型文件/目录，并展示 Docker images。
 - 提供“模型镜像检索”视图，按模型名、路径、Docker 镜像名或 tag 查找资产所在服务器。
 - 检索结果显示服务器分组、IP、当前占用状态，并支持复制 IP、SSH 命令、模型路径和镜像名称。
+- 支持多站点入口切换，可以在昆山/天津中心和太原中心等多套独立部署之间跳转。
 - 右上角支持按服务器名称、IP、分组、标签、型号、模型路径和镜像名称进行模糊搜索。
 - 型号只在新增服务器和手动刷新时重新识别，日常自动刷新只采集占用数据。
 - 定期备份服务器配置文件，便于误操作后恢复。
@@ -204,6 +205,20 @@ data/servers.sample.json
 
 服务器配置支持 `group` 分组字段。页面会根据已有服务器自动生成分组筛选入口；`tags` 用于补充额外标签。
 
+多站点入口配置保存在：
+
+```text
+data/sites.json
+```
+
+示例配置：
+
+```text
+data/sites.sample.json
+```
+
+每套部署可以维护自己的 `current` 和 `sites`。例如昆山服务可以把当前站点写成“昆山 / 天津中心”，并在 `sites` 里加入太原服务地址；太原服务则把当前站点写成“太原中心”，同时保留返回昆山服务的地址。`data/sites.json` 属于本地运行配置，不会提交到仓库。
+
 程序会定期把服务器配置备份到：
 
 ```text
@@ -242,6 +257,11 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `ASSET_MAX_ITEMS`：每台服务器最多返回的模型条目和镜像条目数量，默认 `160`。
 - `BACKUP_INTERVAL_MS`：服务器配置定期备份间隔，默认 `86400000` 毫秒。
 - `BACKUP_RETENTION`：服务器配置备份保留份数，默认 `30`。
+- `SITE_ID`：当前站点 ID，默认 `local`。
+- `SITE_NAME`：当前站点显示名称，默认 `本地中心`。
+- `SITE_DESCRIPTION`：当前站点说明，默认 `共享测试资源`。
+- `SITE_URL`：当前站点访问地址，默认 `/`。
+- `SITE_LINKS`：无 `data/sites.json` 时使用的站点列表，支持 JSON 数组，或 `名称|地址|说明;名称|地址|说明` 格式。
 - `SSH_PATH`：自定义 SSH 程序路径。Windows 默认使用 `C:\Windows\System32\OpenSSH\ssh.exe`。
 
 ## 运维命令

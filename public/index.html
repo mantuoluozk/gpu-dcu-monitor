@@ -12,10 +12,12 @@
         <div class="brand">
           <div class="brand-mark">G</div>
           <div>
-            <h1>GPU/DCU 资源看板</h1>
+            <h1 id="brandTitle">GPU/DCU 资源看板</h1>
             <p id="lastRefresh">等待刷新</p>
           </div>
         </div>
+
+        <nav class="site-switcher" id="siteSwitcher" aria-label="站点切换"></nav>
 
         <div class="filters" role="tablist" aria-label="服务器筛选">
           <button class="filter active" data-filter="all" type="button">
@@ -48,7 +50,7 @@
       <main class="content">
         <section class="topline">
           <div>
-            <p class="eyebrow">共享测试资源</p>
+            <p class="eyebrow" id="siteEyebrow">共享测试资源</p>
             <h2 id="pageTitle">服务器占用情况</h2>
           </div>
         </section>

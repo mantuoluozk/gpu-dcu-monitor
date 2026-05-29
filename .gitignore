@@ -1,5 +1,6 @@
 node_modules/
 data/servers.json
+data/sites.json
 data/backups/
 *.log
 *.tar

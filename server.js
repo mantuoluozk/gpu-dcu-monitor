@@ -16,9 +16,14 @@ const ASSET_SEARCH_MAX_RESULTS = clampInt(process.env.ASSET_SEARCH_MAX_RESULTS, 
 const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || "/models,/public,/data");
 const BACKUP_INTERVAL_MS = Number(process.env.BACKUP_INTERVAL_MS || 24 * 60 * 60 * 1000);
 const BACKUP_RETENTION = clampInt(process.env.BACKUP_RETENTION, 1, 365, 30);
+const SITE_ID = String(process.env.SITE_ID || "local").trim() || "local";
+const SITE_NAME = String(process.env.SITE_NAME || "本地中心").trim() || "本地中心";
+const SITE_DESCRIPTION = String(process.env.SITE_DESCRIPTION || "共享测试资源").trim() || "共享测试资源";
+const SITE_URL = String(process.env.SITE_URL || "/").trim() || "/";
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const CONFIG_PATH = path.join(DATA_DIR, "servers.json");
+const SITE_CONFIG_PATH = path.join(DATA_DIR, "sites.json");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const PUBLIC_DIR = path.join(ROOT, "public");
 
@@ -131,6 +136,105 @@ function parseCsv(value) {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 24);
+}
+
+function loadSiteConfig() {
+  const current = normalizeSite({
+    id: SITE_ID,
+    name: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    current: true
+  });
+  let configuredSites = [];
+
+  const fileConfig = readSiteConfigFile();
+  if (fileConfig) {
+    if (fileConfig.current) {
+      const fileCurrent = normalizeSite(fileConfig.current);
+      if (fileCurrent) {
+        current.id = fileCurrent.id || current.id;
+        current.name = fileCurrent.name || current.name;
+        current.description = fileCurrent.description || current.description;
+        current.url = fileCurrent.url || current.url;
+      }
+    }
+    configuredSites = Array.isArray(fileConfig.sites) ? fileConfig.sites.map(normalizeSite).filter(Boolean) : [];
+  } else {
+    configuredSites = parseSiteLinks(process.env.SITE_LINKS);
+  }
+
+  const sites = mergeSites(current, configuredSites);
+  return { current, sites };
+}
+
+function readSiteConfigFile() {
+  if (!fs.existsSync(SITE_CONFIG_PATH)) return null;
+  try {
+    const raw = fs.readFileSync(SITE_CONFIG_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return { sites: parsed };
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch (error) {
+    console.warn(`Failed to read site config: ${error.message}`);
+    return null;
+  }
+}
+
+function parseSiteLinks(value) {
+  const text = String(value || "").trim();
+  if (!text) return [];
+  if (text[0] === "[") {
+    try {
+      const parsed = JSON.parse(text);
+      return Array.isArray(parsed) ? parsed.map(normalizeSite).filter(Boolean) : [];
+    } catch (error) {
+      console.warn(`SITE_LINKS JSON parse failed: ${error.message}`);
+      return [];
+    }
+  }
+  return text
+    .split(";")
+    .map((item, index) => {
+      const parts = item.split("|").map((part) => part.trim());
+      return normalizeSite({
+        id: parts[0] || `site-${index + 1}`,
+        name: parts[0],
+        url: parts[1],
+        description: parts[2]
+      });
+    })
+    .filter(Boolean);
+}
+
+function normalizeSite(input) {
+  if (!input || typeof input !== "object") return null;
+  const name = String(input.name || "").trim();
+  const url = String(input.url || "").trim();
+  if (!name || !url) return null;
+  return {
+    id: String(input.id || name).trim() || name,
+    name,
+    url,
+    description: String(input.description || "").trim(),
+    current: Boolean(input.current)
+  };
+}
+
+function mergeSites(current, sites) {
+  const byKey = new Map();
+  [current].concat(sites || []).forEach((site) => {
+    if (!site) return;
+    const key = site.id || site.url || site.name;
+    byKey.set(key, {
+      id: site.id,
+      name: site.name,
+      url: site.url,
+      description: site.description,
+      current: site.current || site.id === current.id || site.url === current.url
+    });
+  });
+  return Array.from(byKey.values());
 }
 
 function normalizeServer(input) {
@@ -1119,6 +1223,11 @@ function serveStatic(req, res) {
 async function handleApi(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const parts = url.pathname.split("/").filter(Boolean);
+
+  if (req.method === "GET" && url.pathname === "/api/site-config") {
+    sendJson(res, 200, loadSiteConfig());
+    return;
+  }
 
   if (req.method === "GET" && url.pathname === "/api/servers") {
     const includeAssetDetails = url.searchParams.get("assetDetails") === "1";

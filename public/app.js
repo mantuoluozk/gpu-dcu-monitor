@@ -10,6 +10,10 @@ const state = {
   assetTotalMatches: 0,
   assetSearching: false,
   selectedId: null,
+  siteConfig: {
+    current: { name: "GPU/DCU 资源看板", description: "共享测试资源", url: "/" },
+    sites: []
+  },
   pollIntervalMs: 10000,
   assetRefreshing: false,
   assetDetailLoading: false,
@@ -21,6 +25,9 @@ const els = {
   grid: document.querySelector("#serverGrid"),
   empty: document.querySelector("#emptyState"),
   detail: document.querySelector("#detailPanel"),
+  brandTitle: document.querySelector("#brandTitle"),
+  siteEyebrow: document.querySelector("#siteEyebrow"),
+  siteSwitcher: document.querySelector("#siteSwitcher"),
   pageTitle: document.querySelector("#pageTitle"),
   groupFilters: document.querySelector("#groupFilters"),
   groupOptions: document.querySelector("#groupOptions"),
@@ -87,7 +94,55 @@ els.search.addEventListener("input", () => {
 els.form.addEventListener("submit", saveServer);
 els.deleteBtn.addEventListener("click", deleteSelectedServer);
 
-loadServers();
+init();
+
+async function init() {
+  await loadSiteConfig();
+  loadServers();
+}
+
+async function loadSiteConfig() {
+  try {
+    const payload = await requestJson("/api/site-config");
+    state.siteConfig = {
+      current: payload.current || state.siteConfig.current,
+      sites: payload.sites || []
+    };
+  } catch (error) {
+    console.warn(error);
+  }
+  renderSiteConfig();
+}
+
+function renderSiteConfig() {
+  const current = state.siteConfig.current || {};
+  if (els.brandTitle) els.brandTitle.textContent = current.name || "GPU/DCU 资源看板";
+  if (els.siteEyebrow) els.siteEyebrow.textContent = current.description || "共享测试资源";
+
+  if (!els.siteSwitcher) return;
+  const sites = state.siteConfig.sites || [];
+  if (!sites.length) {
+    els.siteSwitcher.classList.add("hidden");
+    return;
+  }
+
+  els.siteSwitcher.classList.remove("hidden");
+  els.siteSwitcher.innerHTML = `
+    <div class="site-switcher-title">站点切换</div>
+    <div class="site-link-list">
+      ${sites.map(siteLinkHtml).join("")}
+    </div>`;
+}
+
+function siteLinkHtml(site) {
+  const active = site.current ? " active" : "";
+  const description = site.description ? `<span>${escapeHtml(site.description)}</span>` : "";
+  return `
+    <a class="site-link${active}" href="${escapeAttr(site.url)}">
+      <strong>${escapeHtml(site.name)}</strong>
+      ${description}
+    </a>`;
+}
 
 async function loadServers() {
   try {
