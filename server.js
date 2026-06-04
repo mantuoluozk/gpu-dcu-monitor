@@ -669,7 +669,8 @@ function buildAssetCommand() {
 
 function buildHySmiCommand(args) {
   const command = ["hy-smi", args].filter(Boolean).join(" ");
-  return `(${command} 2>/dev/null || bash -ilc ${shellQuote(command)})`;
+  const hyhalCommand = `. /opt/hyhal/env.sh >/dev/null 2>&1 && ${command}`;
+  return `(${command} 2>/dev/null || bash -ilc ${shellQuote(command)} || bash -lc ${shellQuote(hyhalCommand)})`;
 }
 
 function shellQuote(value) {
