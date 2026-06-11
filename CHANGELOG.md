@@ -6,6 +6,7 @@
 - 扩大模型资产扫描范围，默认覆盖 `/models`、`/model`、`/public`、`/data`、`/mnt`、`/home`、`/root`、`/workspace`、`/workspaces`、`/opt` 等常见目录，并识别更多权重、配置和推理引擎文件。
 - 模型资产默认返回上限提升到 800 条，并支持通过 `ASSET_SCAN_MAX_DEPTH`、`ASSET_REFRESH_HOUR`、`ASSET_REFRESH_MINUTE` 调整扫描深度和自动盘点时间。
 - 根据太原送测设备模型统计表补全 `/data1`、`/data2`、`/data_nvme*`、`/apps`、`/aidata`、`/storage`、`/tpstor`、`/glusterfs-user-data` 等模型落点，默认扫描深度提升到 12 层，条目上限提升到 1500 条。
+- 收紧模型资产筛选：权重和推理引擎文件直接展示；`config.json`、`tokenizer.json` 等弱特征只用于确认模型目录，不再单独作为模型文件展示，减少普通项目目录混入。
 - 新增“更新日志”页面，用户可以在界面中直接查看每次功能变化和部署兼容性说明。
 
 ## 2026-06-04

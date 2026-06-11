@@ -708,7 +708,7 @@ function buildAssetCommand() {
   const paths = ASSET_PATHS.length ? ASSET_PATHS : DEFAULT_ASSET_PATHS;
   const pathList = paths.map(shellQuote).join(" ");
   const perPathLimit = Math.max(300, Math.ceil(ASSET_MAX_ITEMS / paths.length));
-  const modelFilePattern = [
+  const modelStrongFilePattern = [
     "-iname '*.gguf'",
     "-o -iname '*.ggml'",
     "-o -iname '*.safetensors'",
@@ -723,8 +723,10 @@ function buildAssetCommand() {
     "-o -iname '*.pth'",
     "-o -iname '*.ckpt'",
     "-o -iname '*.mar'",
-    "-o -iname '*.llamafile'",
-    "-o -iname 'config.json'",
+    "-o -iname '*.llamafile'"
+  ].join(" ");
+  const modelMetaFilePattern = [
+    "-iname 'config.json'",
     "-o -iname 'adapter_config.json'",
     "-o -iname 'preprocessor_config.json'",
     "-o -iname 'tokenizer.json'",
@@ -741,11 +743,13 @@ function buildAssetCommand() {
     `if [ -d "$p" ]; then`,
     `{`,
     `${dirFindPrefix} -type d ! -name '.*' -print 2>/dev/null | while IFS= read -r d; do`,
-    `if find "$d" -maxdepth 2 -type f \\( ${modelFilePattern} \\) -print -quit 2>/dev/null | grep -q . || find "$d" -maxdepth 0 \\( -iname ${modelNamePattern} \\) -print -quit 2>/dev/null | grep -q .; then`,
+    `has_strong=$(find "$d" -maxdepth 2 -type f \\( ${modelStrongFilePattern} \\) -print -quit 2>/dev/null);`,
+    `has_meta=$(find "$d" -maxdepth 2 -type f \\( ${modelMetaFilePattern} \\) -print -quit 2>/dev/null);`,
+    `if [ -n "$has_strong" ] || { [ -n "$has_meta" ] && { find "$d" -maxdepth 0 \\( -iname ${modelNamePattern} \\) -print -quit 2>/dev/null | grep -q . || printf '%s\\n' "$d" | grep -Eiq '(^|/)(models?|JH_models)(/|$)'; }; }; then`,
     `mt=$(date -r "$d" '+%Y-%m-%d %H:%M' 2>/dev/null || echo ''); printf 'MODEL\\t%s\\td\\t%s\\n' "$d" "$mt";`,
     `fi;`,
     `done;`,
-    `${dirFindPrefix} -type f \\( ${modelFilePattern} \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
+    `${dirFindPrefix} -type f \\( ${modelStrongFilePattern} \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
     `} | head -n ${perPathLimit};`,
     `fi;`,
     `done | head -n ${ASSET_MAX_ITEMS}`

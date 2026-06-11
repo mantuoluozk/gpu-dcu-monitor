@@ -259,6 +259,7 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `ASSET_PATHS`：模型目录扫描路径，默认覆盖 `/models`、`/model`、`/Model`、`/public`、`/data*`、`/data_nvme*`、`/home`、`/root`、`/apps`、`/aidata`、`/storage`、`/tpstor`、`/glusterfs-user-data` 等常见模型落点。
 - `ASSET_SCAN_MAX_DEPTH`：模型目录扫描深度，默认 `12`。
 - `ASSET_MAX_ITEMS`：每台服务器最多返回的模型条目和镜像条目数量，默认 `1500`。
+- 模型筛选会优先展示权重、推理引擎等强特征文件；`config.json`、`tokenizer.json` 等弱特征只用于确认模型目录，避免普通项目配置文件混入结果。
 - `BACKUP_INTERVAL_MS`：服务器配置定期备份间隔，默认 `86400000` 毫秒。
 - `BACKUP_RETENTION`：服务器配置备份保留份数，默认 `30`。
 - `SITE_ID`：当前站点 ID，默认 `local`。
