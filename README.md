@@ -256,9 +256,9 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `ASSET_REFRESH_MINUTE`：模型资产和 Docker 镜像自动盘点分钟，默认 `0`。
 - `ASSET_SSH_TIMEOUT_MS`：单台服务器资产盘点 SSH 超时，默认 `30000` 毫秒。
 - `ASSET_CONCURRENCY`：资产盘点并发数，默认 `3`。
-- `ASSET_PATHS`：模型目录扫描路径，默认 `/models,/model,/public,/data,/mnt,/home,/root,/workspace,/workspaces,/opt`。
-- `ASSET_SCAN_MAX_DEPTH`：模型目录扫描深度，默认 `4`。
-- `ASSET_MAX_ITEMS`：每台服务器最多返回的模型条目和镜像条目数量，默认 `800`。
+- `ASSET_PATHS`：模型目录扫描路径，默认覆盖 `/models`、`/model`、`/Model`、`/public`、`/data*`、`/data_nvme*`、`/home`、`/root`、`/apps`、`/aidata`、`/storage`、`/tpstor`、`/glusterfs-user-data` 等常见模型落点。
+- `ASSET_SCAN_MAX_DEPTH`：模型目录扫描深度，默认 `12`。
+- `ASSET_MAX_ITEMS`：每台服务器最多返回的模型条目和镜像条目数量，默认 `1500`。
 - `BACKUP_INTERVAL_MS`：服务器配置定期备份间隔，默认 `86400000` 毫秒。
 - `BACKUP_RETENTION`：服务器配置备份保留份数，默认 `30`。
 - `SITE_ID`：当前站点 ID，默认 `local`。

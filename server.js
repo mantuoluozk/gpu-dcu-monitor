@@ -10,11 +10,39 @@ const SSH_TIMEOUT_MS = Number(process.env.SSH_TIMEOUT_MS || 20000);
 const REFRESH_CONCURRENCY = clampInt(process.env.REFRESH_CONCURRENCY, 1, 32, 8);
 const ASSET_SSH_TIMEOUT_MS = Number(process.env.ASSET_SSH_TIMEOUT_MS || 30000);
 const ASSET_CONCURRENCY = clampInt(process.env.ASSET_CONCURRENCY, 1, 16, 3);
-const ASSET_MAX_ITEMS = clampInt(process.env.ASSET_MAX_ITEMS, 20, 2000, 800);
+const ASSET_MAX_ITEMS = clampInt(process.env.ASSET_MAX_ITEMS, 20, 5000, 1500);
 const ASSET_SEARCH_MAX_RESULTS = clampInt(process.env.ASSET_SEARCH_MAX_RESULTS, 20, 2000, 300);
-const DEFAULT_ASSET_PATHS = ["/models", "/model", "/public", "/data", "/mnt", "/home", "/root", "/workspace", "/workspaces", "/opt"];
+const DEFAULT_ASSET_PATHS = [
+  "/models",
+  "/models1",
+  "/model",
+  "/Model",
+  "/public",
+  "/data",
+  "/data1",
+  "/data2",
+  "/data3",
+  "/datav",
+  "/data_nvme0n1",
+  "/data_nvme1n1",
+  "/data_nvme2n1",
+  "/data_nvme3n1",
+  "/mnt",
+  "/home",
+  "/root",
+  "/apps",
+  "/aidata",
+  "/storage",
+  "/tpstor",
+  "/glusterfs-user-data",
+  "/other",
+  "/workspace",
+  "/workspaces",
+  "/opt",
+  "/Ring-2.5-1T"
+];
 const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || DEFAULT_ASSET_PATHS.join(","));
-const ASSET_SCAN_MAX_DEPTH = clampInt(process.env.ASSET_SCAN_MAX_DEPTH, 1, 8, 4);
+const ASSET_SCAN_MAX_DEPTH = clampInt(process.env.ASSET_SCAN_MAX_DEPTH, 1, 14, 12);
 const ASSET_REFRESH_HOUR = clampInt(process.env.ASSET_REFRESH_HOUR, 0, 23, 2);
 const ASSET_REFRESH_MINUTE = clampInt(process.env.ASSET_REFRESH_MINUTE, 0, 59, 0);
 const BACKUP_INTERVAL_MS = Number(process.env.BACKUP_INTERVAL_MS || 24 * 60 * 60 * 1000);
@@ -679,7 +707,7 @@ function buildModelCommand(command) {
 function buildAssetCommand() {
   const paths = ASSET_PATHS.length ? ASSET_PATHS : DEFAULT_ASSET_PATHS;
   const pathList = paths.map(shellQuote).join(" ");
-  const perPathLimit = Math.max(20, Math.ceil(ASSET_MAX_ITEMS / paths.length));
+  const perPathLimit = Math.max(300, Math.ceil(ASSET_MAX_ITEMS / paths.length));
   const modelFilePattern = [
     "-iname '*.gguf'",
     "-o -iname '*.ggml'",
@@ -705,7 +733,7 @@ function buildAssetCommand() {
     "-o -iname 'generation_config.json'",
     "-o -iname 'model_index.json'"
   ].join(" ");
-  const modelNamePattern = "'*qwen*' -o -iname '*deepseek*' -o -iname '*llama*' -o -iname '*llm*' -o -iname '*chatglm*' -o -iname '*glm*' -o -iname '*baichuan*' -o -iname '*internlm*' -o -iname '*yi-*' -o -iname '*mistral*' -o -iname '*mixtral*' -o -iname '*bert*' -o -iname '*bge*' -o -iname '*gte*' -o -iname '*rerank*' -o -iname '*embedding*' -o -iname '*clip*' -o -iname '*whisper*' -o -iname '*stable-diffusion*' -o -iname '*sdxl*' -o -iname '*flux*' -o -iname '*controlnet*' -o -iname '*lora*' -o -iname '*sam*' -o -iname '*yolo*'";
+  const modelNamePattern = "'*qwen*' -o -iname '*deepseek*' -o -iname '*llama*' -o -iname '*llm*' -o -iname '*chatglm*' -o -iname '*glm*' -o -iname '*baichuan*' -o -iname '*internlm*' -o -iname '*yi-*' -o -iname '*mistral*' -o -iname '*mixtral*' -o -iname '*bert*' -o -iname '*bge*' -o -iname '*gte*' -o -iname '*rerank*' -o -iname '*embedding*' -o -iname '*clip*' -o -iname '*whisper*' -o -iname '*stable-diffusion*' -o -iname '*sdxl*' -o -iname '*flux*' -o -iname '*controlnet*' -o -iname '*lora*' -o -iname '*sam*' -o -iname '*yolo*' -o -iname '*minimax*' -o -iname '*mineru*' -o -iname '*cogview*' -o -iname '*medgemma*' -o -iname '*tinyllama*' -o -iname '*macbert*' -o -iname '*meshgraphnets*' -o -iname '*completion_*' -o -iname '*nes_*' -o -iname '*rag_*' -o -iname '*awq*' -o -iname '*w8a8*' -o -iname '*w4a8*' -o -iname '*int8*' -o -iname '*int4*'";
   const prunedDirPattern = "-name '.git' -o -name '.svn' -o -name '__pycache__' -o -name 'node_modules' -o -name '.venv' -o -name 'venv' -o -name 'env' -o -name 'site-packages' -o -name 'dist' -o -name 'build'";
   const dirFindPrefix = `find "$p" -mindepth 1 -maxdepth ${ASSET_SCAN_MAX_DEPTH} \\( -type d \\( ${prunedDirPattern} \\) -prune \\) -o`;
   const modelCommand = [
