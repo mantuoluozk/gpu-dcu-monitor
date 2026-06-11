@@ -677,11 +677,12 @@ function assetPanelHtml(assets) {
 }
 
 function modelItemHtml(item) {
+  const fileCount = item.files?.length || 0;
   return `
     <div class="asset-item">
       <strong>${escapeHtml(item.name || "-")}</strong>
       <span>${escapeHtml(item.path || "-")}</span>
-      <em>${escapeHtml(item.root || "-")}${item.type === "file" ? " · 文件" : " · 目录"}</em>
+      <em>${escapeHtml(item.root || "-")} · 目录${fileCount ? ` · ${fileCount} 个文件可搜索` : ""}</em>
     </div>`;
 }
 
@@ -799,7 +800,12 @@ function matchesDashboardQuery(server, query) {
 function assetSearchText(server) {
   const assets = server.assets || {};
   if (assets.searchText) return assets.searchText;
-  const modelText = (assets.modelItems || []).flatMap((item) => [item.name, item.path, item.root]);
+  const modelText = (assets.modelItems || []).flatMap((item) => [
+    item.name,
+    item.path,
+    item.root,
+    ...(item.files || []).flatMap((file) => [file.name, file.path])
+  ]);
   const dockerText = (assets.dockerImages || []).flatMap((image) => [image.repository, image.tag, image.imageId]);
   return [...modelText, ...dockerText].filter(Boolean).join(" ");
 }

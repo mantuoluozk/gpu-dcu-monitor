@@ -406,7 +406,7 @@ function publicAssetStatus(assets, includeDetails) {
 
 function assetSearchText(modelItems, dockerImages) {
   return [
-    ...modelItems.flatMap((item) => [item.name, item.path, item.root]),
+    ...modelItems.flatMap((item) => [item.name, item.path, item.root, ...(item.files || []).flatMap((file) => [file.name, file.path])]),
     ...dockerImages.flatMap((image) => [image.repository, image.tag, image.imageId])
   ]
     .filter(Boolean)
@@ -927,9 +927,52 @@ function parseAssetOutput(output) {
   }
 
   return {
-    modelItems: dedupeBy(modelItems, (item) => `${item.path}:${item.type}`).slice(0, ASSET_MAX_ITEMS),
+    modelItems: collapseModelItems(modelItems).slice(0, ASSET_MAX_ITEMS),
     dockerImages: dedupeBy(dockerImages, (item) => `${item.repository}:${item.tag}:${item.imageId}`).slice(0, ASSET_MAX_ITEMS)
   };
+}
+
+function collapseModelItems(items) {
+  const byPath = new Map();
+  const sorted = dedupeBy(items, (item) => `${item.path}:${item.type}`).sort((a, b) => {
+    if (a.type === b.type) return a.path.localeCompare(b.path);
+    return a.type === "dir" ? -1 : 1;
+  });
+
+  for (const item of sorted) {
+    const normalizedPath = normalizeAssetPath(item.path);
+    if (!normalizedPath) continue;
+    const modelPath = item.type === "file" ? path.posix.dirname(normalizedPath) : normalizedPath;
+    const existing = byPath.get(modelPath) || {
+      name: normalizeAssetName(path.posix.basename(modelPath)),
+      path: modelPath,
+      root: assetRoot(modelPath),
+      type: "dir",
+      modifiedAt: "",
+      files: []
+    };
+
+    if (item.type === "file") {
+      existing.files.push({
+        name: item.name,
+        path: normalizedPath,
+        modifiedAt: item.modifiedAt || ""
+      });
+      if (!existing.modifiedAt) existing.modifiedAt = item.modifiedAt || "";
+    } else if (item.modifiedAt) {
+      existing.modifiedAt = item.modifiedAt;
+    }
+    byPath.set(modelPath, existing);
+  }
+
+  return Array.from(byPath.values()).map((item) => ({
+    ...item,
+    files: dedupeBy(item.files || [], (file) => file.path).slice(0, 30)
+  }));
+}
+
+function normalizeAssetPath(filePath) {
+  return normalizeAssetName(filePath).replace(/\\/g, "/");
 }
 
 function normalizeAssetName(value) {
@@ -978,13 +1021,14 @@ function searchAssetInventory(options) {
     const matches = [];
     if (type === "all" || type === "model") {
       for (const item of assets.modelItems || []) {
-        const text = [item.name, item.path, item.root, item.type].filter(Boolean).join(" ").toLowerCase();
+        const fileText = (item.files || []).flatMap((file) => [file.name, file.path]).join(" ");
+        const text = [item.name, item.path, item.root, fileText].filter(Boolean).join(" ").toLowerCase();
         if (matchesTerms(text, terms)) {
           matches.push({
             type: "model",
             label: item.name,
             value: item.path,
-            meta: `${item.root || "-"} · ${item.type === "file" ? "文件" : "目录"}`,
+            meta: `${item.root || "-"} · 目录${item.files && item.files.length ? ` · ${item.files.length} 个文件可搜索` : ""}`,
             copyText: item.path
           });
         }
