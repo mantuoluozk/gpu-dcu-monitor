@@ -445,7 +445,7 @@ function renderAssetSearch() {
 
   els.assetResultList.innerHTML = state.assetResults.length
     ? state.assetResults.map(assetResultGroupHtml).join("")
-    : `<div class="asset-search-empty"><strong>没有匹配结果</strong><span>模型资产会在每天 02:00 自动盘点，也可以换一个模型名 / 镜像 tag。</span></div>`;
+    : `<div class="asset-search-empty"><strong>没有匹配结果</strong><span>可以先点“刷新模型资产”，等待盘点完成后再搜，或换一个模型名 / 镜像 tag。</span></div>`;
 
   els.assetResultList.querySelectorAll("[data-copy]").forEach((button) => {
     button.addEventListener("click", (event) => {
