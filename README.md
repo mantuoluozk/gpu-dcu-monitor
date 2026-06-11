@@ -254,7 +254,7 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `REFRESH_CONCURRENCY`：GPU/DCU 状态采集并发数，默认 `8`。
 - `ASSET_REFRESH_HOUR`：模型资产和 Docker 镜像自动盘点小时，默认 `2`。
 - `ASSET_REFRESH_MINUTE`：模型资产和 Docker 镜像自动盘点分钟，默认 `0`。
-- `ASSET_SSH_TIMEOUT_MS`：单台服务器资产盘点 SSH 超时，默认 `30000` 毫秒。
+- `ASSET_SSH_TIMEOUT_MS`：单台服务器资产盘点 SSH 超时，默认 `120000` 毫秒。模型目录较深或磁盘较慢时可以继续调大。
 - `ASSET_CONCURRENCY`：资产盘点并发数，默认 `3`。
 - `ASSET_PATHS`：模型目录扫描路径，默认覆盖 `/models`、`/model`、`/Model`、`/public`、`/data*`、`/data_nvme*`、`/home`、`/root`、`/apps`、`/aidata`、`/storage`、`/tpstor`、`/glusterfs-user-data` 等常见模型落点。
 - `ASSET_SCAN_MAX_DEPTH`：模型目录扫描深度，默认 `12`。
