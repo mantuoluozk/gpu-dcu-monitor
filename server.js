@@ -8,12 +8,15 @@ const PORT = Number(process.env.PORT || 3066);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
 const SSH_TIMEOUT_MS = Number(process.env.SSH_TIMEOUT_MS || 20000);
 const REFRESH_CONCURRENCY = clampInt(process.env.REFRESH_CONCURRENCY, 1, 32, 8);
-const ASSET_REFRESH_INTERVAL_MS = Number(process.env.ASSET_REFRESH_INTERVAL_MS || 30 * 60 * 1000);
 const ASSET_SSH_TIMEOUT_MS = Number(process.env.ASSET_SSH_TIMEOUT_MS || 30000);
 const ASSET_CONCURRENCY = clampInt(process.env.ASSET_CONCURRENCY, 1, 16, 3);
-const ASSET_MAX_ITEMS = clampInt(process.env.ASSET_MAX_ITEMS, 20, 1000, 160);
+const ASSET_MAX_ITEMS = clampInt(process.env.ASSET_MAX_ITEMS, 20, 2000, 800);
 const ASSET_SEARCH_MAX_RESULTS = clampInt(process.env.ASSET_SEARCH_MAX_RESULTS, 20, 2000, 300);
-const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || "/models,/public,/data");
+const DEFAULT_ASSET_PATHS = ["/models", "/model", "/public", "/data", "/mnt", "/home", "/root", "/workspace", "/workspaces", "/opt"];
+const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || DEFAULT_ASSET_PATHS.join(","));
+const ASSET_SCAN_MAX_DEPTH = clampInt(process.env.ASSET_SCAN_MAX_DEPTH, 1, 8, 4);
+const ASSET_REFRESH_HOUR = clampInt(process.env.ASSET_REFRESH_HOUR, 0, 23, 2);
+const ASSET_REFRESH_MINUTE = clampInt(process.env.ASSET_REFRESH_MINUTE, 0, 59, 0);
 const BACKUP_INTERVAL_MS = Number(process.env.BACKUP_INTERVAL_MS || 24 * 60 * 60 * 1000);
 const BACKUP_RETENTION = clampInt(process.env.BACKUP_RETENTION, 1, 365, 30);
 const SITE_ID = String(process.env.SITE_ID || "local").trim() || "local";
@@ -26,6 +29,7 @@ const CONFIG_PATH = path.join(DATA_DIR, "servers.json");
 const SITE_CONFIG_PATH = path.join(DATA_DIR, "sites.json");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const PUBLIC_DIR = path.join(ROOT, "public");
+const CHANGELOG_PATH = path.join(ROOT, "CHANGELOG.md");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -44,6 +48,7 @@ let lastAssetRefresh = null;
 let refreshInFlight = null;
 let refreshInFlightIncludesModels = false;
 let assetRefreshInFlight = null;
+let nextAssetRefreshAt = null;
 
 function createId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -166,6 +171,37 @@ function loadSiteConfig() {
 
   const sites = mergeSites(current, configuredSites);
   return { current, sites };
+}
+
+function loadChangelog() {
+  if (!fs.existsSync(CHANGELOG_PATH)) {
+    return { updatedAt: null, entries: [] };
+  }
+  try {
+    const stat = fs.statSync(CHANGELOG_PATH);
+    const raw = fs.readFileSync(CHANGELOG_PATH, "utf8");
+    const entries = [];
+    let current = null;
+    raw.split(/\r?\n/).forEach((line) => {
+      const heading = line.match(/^##\s+(.+?)\s*$/);
+      if (heading) {
+        current = { title: heading[1], items: [] };
+        entries.push(current);
+        return;
+      }
+      const item = line.match(/^-\s+(.+?)\s*$/);
+      if (item && current) {
+        current.items.push(item[1]);
+      }
+    });
+    return {
+      updatedAt: stat.mtime.toISOString(),
+      entries: entries.filter((entry) => entry.items.length)
+    };
+  } catch (error) {
+    console.warn(`Failed to read changelog: ${error.message}`);
+    return { updatedAt: null, entries: [], error: error.message };
+  }
 }
 
 function readSiteConfigFile() {
@@ -427,6 +463,26 @@ async function refreshAssetsAll() {
   return assetRefreshInFlight;
 }
 
+function nextDailyAssetRefreshDate(now) {
+  const next = new Date(now.getTime());
+  next.setHours(ASSET_REFRESH_HOUR, ASSET_REFRESH_MINUTE, 0, 0);
+  if (next.getTime() <= now.getTime()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
+function scheduleDailyAssetRefresh() {
+  const next = nextDailyAssetRefreshDate(new Date());
+  nextAssetRefreshAt = next.toISOString();
+  const delay = Math.max(1000, next.getTime() - Date.now());
+  setTimeout(() => {
+    refreshAssetsAll()
+      .catch((error) => console.error(error))
+      .finally(scheduleDailyAssetRefresh);
+  }, delay);
+}
+
 async function mapWithConcurrency(items, limit, worker) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -621,34 +677,47 @@ function buildModelCommand(command) {
 }
 
 function buildAssetCommand() {
-  const paths = ASSET_PATHS.length ? ASSET_PATHS : ["/models", "/public", "/data"];
+  const paths = ASSET_PATHS.length ? ASSET_PATHS : DEFAULT_ASSET_PATHS;
   const pathList = paths.map(shellQuote).join(" ");
   const perPathLimit = Math.max(20, Math.ceil(ASSET_MAX_ITEMS / paths.length));
   const modelFilePattern = [
     "-iname '*.gguf'",
+    "-o -iname '*.ggml'",
     "-o -iname '*.safetensors'",
     "-o -iname 'pytorch_model*.bin'",
     "-o -iname 'model*.bin'",
+    "-o -iname 'consolidated*.pth'",
     "-o -iname '*.onnx'",
+    "-o -iname '*.engine'",
+    "-o -iname '*.tflite'",
+    "-o -iname '*.pb'",
     "-o -iname '*.pt'",
     "-o -iname '*.pth'",
     "-o -iname '*.ckpt'",
+    "-o -iname '*.mar'",
+    "-o -iname '*.llamafile'",
     "-o -iname 'config.json'",
+    "-o -iname 'adapter_config.json'",
+    "-o -iname 'preprocessor_config.json'",
     "-o -iname 'tokenizer.json'",
     "-o -iname 'tokenizer.model'",
-    "-o -iname 'generation_config.json'"
+    "-o -iname 'sentencepiece.bpe.model'",
+    "-o -iname 'generation_config.json'",
+    "-o -iname 'model_index.json'"
   ].join(" ");
-  const modelNamePattern = "'*qwen*' -o -iname '*deepseek*' -o -iname '*llama*' -o -iname '*chatglm*' -o -iname '*glm*' -o -iname '*baichuan*' -o -iname '*internlm*' -o -iname '*mistral*' -o -iname '*mixtral*' -o -iname '*bert*' -o -iname '*clip*' -o -iname '*whisper*' -o -iname '*stable-diffusion*' -o -iname '*sdxl*'";
+  const modelNamePattern = "'*qwen*' -o -iname '*deepseek*' -o -iname '*llama*' -o -iname '*llm*' -o -iname '*chatglm*' -o -iname '*glm*' -o -iname '*baichuan*' -o -iname '*internlm*' -o -iname '*yi-*' -o -iname '*mistral*' -o -iname '*mixtral*' -o -iname '*bert*' -o -iname '*bge*' -o -iname '*gte*' -o -iname '*rerank*' -o -iname '*embedding*' -o -iname '*clip*' -o -iname '*whisper*' -o -iname '*stable-diffusion*' -o -iname '*sdxl*' -o -iname '*flux*' -o -iname '*controlnet*' -o -iname '*lora*' -o -iname '*sam*' -o -iname '*yolo*'";
+  const prunedDirPattern = "-name '.git' -o -name '.svn' -o -name '__pycache__' -o -name 'node_modules' -o -name '.venv' -o -name 'venv' -o -name 'env' -o -name 'site-packages' -o -name 'dist' -o -name 'build'";
+  const dirFindPrefix = `find "$p" -mindepth 1 -maxdepth ${ASSET_SCAN_MAX_DEPTH} \\( -type d \\( ${prunedDirPattern} \\) -prune \\) -o`;
   const modelCommand = [
     `for p in ${pathList}; do`,
     `if [ -d "$p" ]; then`,
     `{`,
-    `find "$p" -mindepth 1 -maxdepth 2 -type d ! -name '.*' ! -name '__pycache__' | while IFS= read -r d; do`,
-    `if find "$d" -maxdepth 1 -type f \\( ${modelFilePattern} \\) -print -quit 2>/dev/null | grep -q . || find "$d" -maxdepth 0 \\( -iname ${modelNamePattern} \\) -print -quit 2>/dev/null | grep -q .; then`,
+    `${dirFindPrefix} -type d ! -name '.*' -print 2>/dev/null | while IFS= read -r d; do`,
+    `if find "$d" -maxdepth 2 -type f \\( ${modelFilePattern} \\) -print -quit 2>/dev/null | grep -q . || find "$d" -maxdepth 0 \\( -iname ${modelNamePattern} \\) -print -quit 2>/dev/null | grep -q .; then`,
     `mt=$(date -r "$d" '+%Y-%m-%d %H:%M' 2>/dev/null || echo ''); printf 'MODEL\\t%s\\td\\t%s\\n' "$d" "$mt";`,
     `fi;`,
     `done;`,
-    `find "$p" -mindepth 1 -maxdepth 1 -type f \\( ${modelFilePattern} \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
+    `${dirFindPrefix} -type f \\( ${modelFilePattern} \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
     `} | head -n ${perPathLimit};`,
     `fi;`,
     `done | head -n ${ASSET_MAX_ITEMS}`
@@ -1230,6 +1299,11 @@ async function handleApi(req, res) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/changelog") {
+    sendJson(res, 200, loadChangelog());
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/servers") {
     const includeAssetDetails = url.searchParams.get("assetDetails") === "1";
     const servers = loadServers().map((server) => publicServer(server, { includeAssetDetails }));
@@ -1240,7 +1314,11 @@ async function handleApi(req, res) {
       pollIntervalMs: POLL_INTERVAL_MS,
       refreshing: Boolean(refreshInFlight),
       assetRefreshing: Boolean(assetRefreshInFlight),
-      assetRefreshIntervalMs: ASSET_REFRESH_INTERVAL_MS,
+      nextAssetRefreshAt,
+      assetRefreshSchedule: {
+        hour: ASSET_REFRESH_HOUR,
+        minute: ASSET_REFRESH_MINUTE
+      },
       assetPaths: ASSET_PATHS
     });
     return;
@@ -1363,9 +1441,7 @@ setInterval(() => {
 setInterval(() => {
   backupServerConfig("scheduled");
 }, BACKUP_INTERVAL_MS);
-setInterval(() => {
-  refreshAssetsAll().catch((error) => console.error(error));
-}, ASSET_REFRESH_INTERVAL_MS);
+scheduleDailyAssetRefresh();
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`GPU/DCU monitor is running at http://localhost:${PORT}`);

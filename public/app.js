@@ -9,6 +9,9 @@ const state = {
   assetResults: [],
   assetTotalMatches: 0,
   assetSearching: false,
+  changelogEntries: [],
+  changelogUpdatedAt: null,
+  changelogLoading: false,
   selectedId: null,
   siteConfig: {
     current: { name: "GPU/DCU 资源看板", description: "共享测试资源", url: "/" },
@@ -34,10 +37,14 @@ const els = {
   lastRefresh: document.querySelector("#lastRefresh"),
   search: document.querySelector("#searchInput"),
   searchScope: document.querySelector("#searchScope"),
+  searchCluster: document.querySelector(".search-cluster"),
   stats: document.querySelector(".stats"),
   assetSearchPanel: document.querySelector("#assetSearchPanel"),
   assetSearchSummary: document.querySelector("#assetSearchSummary"),
   assetResultList: document.querySelector("#assetResultList"),
+  changelogPanel: document.querySelector("#changelogPanel"),
+  changelogUpdatedAt: document.querySelector("#changelogUpdatedAt"),
+  changelogList: document.querySelector("#changelogList"),
   toast: document.querySelector("#toast"),
   dialog: document.querySelector("#serverDialog"),
   form: document.querySelector("#serverForm"),
@@ -59,9 +66,11 @@ document.querySelector("#addServerBtn").addEventListener("click", () => openDial
 document.querySelector("#emptyAddBtn").addEventListener("click", () => openDialog());
 document.querySelector("#closeDialogBtn").addEventListener("click", () => els.dialog.close());
 document.querySelector("#refreshBtn").addEventListener("click", manualRefresh);
-document.querySelector("#assetRefreshBtn").addEventListener("click", refreshAssets);
+const assetRefreshButton = document.querySelector("#assetRefreshBtn");
+if (assetRefreshButton) assetRefreshButton.addEventListener("click", refreshAssets);
 document.querySelector("#dashboardViewBtn").addEventListener("click", () => setView("dashboard"));
 document.querySelector("#assetViewBtn").addEventListener("click", () => setView("assets"));
+document.querySelector("#changelogViewBtn").addEventListener("click", () => setView("changelog"));
 document.querySelectorAll(".asset-filter").forEach((button) => {
   button.addEventListener("click", () => {
     state.assetType = button.dataset.assetType;
@@ -168,10 +177,28 @@ function setView(view) {
   state.view = view;
   document.querySelector("#dashboardViewBtn").classList.toggle("active", view === "dashboard");
   document.querySelector("#assetViewBtn").classList.toggle("active", view === "assets");
+  document.querySelector("#changelogViewBtn").classList.toggle("active", view === "changelog");
   els.search.placeholder = view === "assets" ? "搜索模型、路径、镜像 tag" : "搜索服务器、IP、模型、镜像";
   els.searchScope.textContent = view === "assets" ? "模型搜索" : "资源搜索";
   if (view === "assets") searchAssets();
+  if (view === "changelog") loadChangelog();
   render();
+}
+
+async function loadChangelog() {
+  if (state.changelogLoading) return;
+  state.changelogLoading = true;
+  renderChangelog();
+  try {
+    const payload = await requestJson("/api/changelog");
+    state.changelogEntries = payload.entries || [];
+    state.changelogUpdatedAt = payload.updatedAt || null;
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.changelogLoading = false;
+    renderChangelog();
+  }
 }
 
 async function loadSelectedAssets() {
@@ -267,18 +294,22 @@ function render() {
   renderGroups();
   renderGrid();
   renderAssetSearch();
+  renderChangelog();
   renderDetail();
 }
 
 function renderViewShell() {
   const showingAssets = state.view === "assets";
-  els.pageTitle.textContent = showingAssets ? "模型镜像检索" : "服务器占用情况";
+  const showingChangelog = state.view === "changelog";
+  els.pageTitle.textContent = showingChangelog ? "更新日志" : (showingAssets ? "模型镜像检索" : "服务器占用情况");
   els.searchScope.textContent = showingAssets ? "模型搜索" : "资源搜索";
-  els.stats.classList.toggle("hidden", showingAssets);
-  els.groupFilters.classList.toggle("hidden", false);
-  els.grid.classList.toggle("hidden", showingAssets || state.servers.length === 0);
-  els.empty.classList.toggle("hidden", showingAssets || state.servers.length !== 0);
+  els.stats.classList.toggle("hidden", showingAssets || showingChangelog);
+  els.groupFilters.classList.toggle("hidden", showingChangelog);
+  if (els.searchCluster) els.searchCluster.classList.toggle("hidden", showingChangelog);
+  els.grid.classList.toggle("hidden", showingAssets || showingChangelog || state.servers.length === 0);
+  els.empty.classList.toggle("hidden", showingAssets || showingChangelog || state.servers.length !== 0);
   els.assetSearchPanel.classList.toggle("hidden", !showingAssets);
+  if (els.changelogPanel) els.changelogPanel.classList.toggle("hidden", !showingChangelog);
 }
 
 function renderGroups() {
@@ -357,8 +388,9 @@ function renderStats() {
 function renderGrid() {
   const servers = filteredServers();
   els.grid.innerHTML = "";
-  els.empty.classList.toggle("hidden", state.view === "assets" || state.servers.length !== 0);
-  els.grid.classList.toggle("hidden", state.view === "assets" || state.servers.length === 0);
+  const hideServerList = state.view === "assets" || state.view === "changelog";
+  els.empty.classList.toggle("hidden", hideServerList || state.servers.length !== 0);
+  els.grid.classList.toggle("hidden", hideServerList || state.servers.length === 0);
 
   for (const server of servers) {
     const status = server.status || {};
@@ -413,7 +445,7 @@ function renderAssetSearch() {
 
   els.assetResultList.innerHTML = state.assetResults.length
     ? state.assetResults.map(assetResultGroupHtml).join("")
-    : `<div class="asset-search-empty"><strong>没有匹配结果</strong><span>可以先点“刷新模型资产”，或换一个模型名 / 镜像 tag。</span></div>`;
+    : `<div class="asset-search-empty"><strong>没有匹配结果</strong><span>模型资产会在每天 02:00 自动盘点，也可以换一个模型名 / 镜像 tag。</span></div>`;
 
   els.assetResultList.querySelectorAll("[data-copy]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -421,6 +453,37 @@ function renderAssetSearch() {
       copyText(button.dataset.copy, button.dataset.copyLabel || "内容");
     });
   });
+}
+
+function renderChangelog() {
+  if (!els.changelogPanel || state.view !== "changelog") return;
+  if (els.changelogUpdatedAt) {
+    els.changelogUpdatedAt.textContent = state.changelogUpdatedAt ? `同步 ${formatTime(state.changelogUpdatedAt)}` : "读取中";
+  }
+  if (!els.changelogList) return;
+
+  if (state.changelogLoading && !state.changelogEntries.length) {
+    els.changelogList.innerHTML = `<div class="changelog-empty">正在读取更新日志...</div>`;
+    return;
+  }
+
+  if (!state.changelogEntries.length) {
+    els.changelogList.innerHTML = `<div class="changelog-empty">暂无更新记录</div>`;
+    return;
+  }
+
+  els.changelogList.innerHTML = state.changelogEntries.map(changelogEntryHtml).join("");
+}
+
+function changelogEntryHtml(entry) {
+  const items = entry.items || [];
+  return `
+    <article class="changelog-entry">
+      <div class="changelog-date">${escapeHtml(entry.title || "")}</div>
+      <ul>
+        ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    </article>`;
 }
 
 function assetResultGroupHtml(group) {

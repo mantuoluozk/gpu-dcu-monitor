@@ -41,7 +41,7 @@
           <button class="ghost-action" id="refreshBtn" type="button">
             <span aria-hidden="true">↻</span>手动刷新
           </button>
-          <button class="ghost-action" id="assetRefreshBtn" type="button">
+          <button class="ghost-action hidden" id="assetRefreshBtn" type="button">
             <span aria-hidden="true">▦</span>刷新模型资产
           </button>
         </div>
@@ -59,6 +59,7 @@
           <div class="view-tabs" role="tablist" aria-label="视图切换">
             <button class="view-tab active" id="dashboardViewBtn" type="button">资源看板</button>
             <button class="view-tab" id="assetViewBtn" type="button">模型镜像检索</button>
+            <button class="view-tab" id="changelogViewBtn" type="button">更新日志</button>
           </div>
           <div class="search-cluster">
             <span id="searchScope">资源搜索</span>
@@ -114,6 +115,17 @@
           </div>
           <div class="asset-search-summary" id="assetSearchSummary">输入模型名、路径或镜像名称开始查找。</div>
           <div class="asset-result-list" id="assetResultList"></div>
+        </section>
+
+        <section class="changelog-panel hidden" id="changelogPanel" aria-live="polite">
+          <div class="changelog-head">
+            <div>
+              <p class="eyebrow">版本变化</p>
+              <h3>最近更新</h3>
+            </div>
+            <span id="changelogUpdatedAt">读取中</span>
+          </div>
+          <div class="changelog-list" id="changelogList"></div>
         </section>
       </main>
 

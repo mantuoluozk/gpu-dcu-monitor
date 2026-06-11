@@ -1094,6 +1094,80 @@ mark {
   padding: 20px;
 }
 
+.changelog-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.changelog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.changelog-head h3 {
+  font-size: 20px;
+}
+
+.changelog-head > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.changelog-list {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 18px 2px;
+}
+
+.changelog-entry {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 13px;
+}
+
+.changelog-date {
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.changelog-entry ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.changelog-entry li {
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.changelog-empty {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  border: 1px dashed #b8c9d1;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .gpu-row {
   background: #fff;
 }
@@ -1316,6 +1390,10 @@ select:focus {
 
   .view-tab {
     flex: 1 1 0;
+  }
+
+  .changelog-entry {
+    grid-template-columns: 1fr;
   }
 
   h2 {
