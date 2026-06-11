@@ -258,6 +258,7 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `ASSET_CONCURRENCY`：资产盘点并发数，默认 `3`。
 - `ASSET_PATHS`：模型目录扫描路径，默认覆盖 `/models`、`/model`、`/Model`、`/public`、`/data*`、`/data_nvme*`、`/home`、`/root`、`/apps`、`/aidata`、`/storage`、`/tpstor`、`/glusterfs-user-data` 等常见模型落点。
 - `ASSET_SCAN_MAX_DEPTH`：模型目录扫描深度，默认 `12`。
+- `ASSET_PATH_TIMEOUT_MS`：单个模型根目录扫描超时，默认 `20000` 毫秒。单个大目录超时会跳过该目录，不影响同一机器其他目录继续盘点。
 - `ASSET_MAX_ITEMS`：每台服务器最多返回的模型条目和镜像条目数量，默认 `1500`。
 - 模型筛选会优先展示权重、推理引擎等强特征文件；`config.json`、`tokenizer.json` 等弱特征只用于确认模型目录，避免普通项目配置文件混入结果。
 - `BACKUP_INTERVAL_MS`：服务器配置定期备份间隔，默认 `86400000` 毫秒。

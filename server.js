@@ -43,6 +43,7 @@ const DEFAULT_ASSET_PATHS = [
 ];
 const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || DEFAULT_ASSET_PATHS.join(","));
 const ASSET_SCAN_MAX_DEPTH = clampInt(process.env.ASSET_SCAN_MAX_DEPTH, 1, 14, 12);
+const ASSET_PATH_TIMEOUT_MS = Number(process.env.ASSET_PATH_TIMEOUT_MS || 20000);
 const ASSET_REFRESH_HOUR = clampInt(process.env.ASSET_REFRESH_HOUR, 0, 23, 2);
 const ASSET_REFRESH_MINUTE = clampInt(process.env.ASSET_REFRESH_MINUTE, 0, 59, 0);
 const BACKUP_INTERVAL_MS = Number(process.env.BACKUP_INTERVAL_MS || 24 * 60 * 60 * 1000);
@@ -168,7 +169,7 @@ function parseCsv(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
-    .slice(0, 24);
+    .slice(0, 64);
 }
 
 function loadSiteConfig() {
@@ -708,6 +709,8 @@ function buildAssetCommand() {
   const paths = ASSET_PATHS.length ? ASSET_PATHS : DEFAULT_ASSET_PATHS;
   const pathList = paths.map(shellQuote).join(" ");
   const perPathLimit = Math.max(300, Math.ceil(ASSET_MAX_ITEMS / paths.length));
+  const pathTimeoutSeconds = Math.max(1, Math.ceil(ASSET_PATH_TIMEOUT_MS / 1000));
+  const confirmTimeoutSeconds = Math.max(2, Math.min(8, pathTimeoutSeconds));
   const modelStrongFilePattern = [
     "-iname '*.gguf'",
     "-o -iname '*.ggml'",
@@ -736,20 +739,21 @@ function buildAssetCommand() {
     "-o -iname 'model_index.json'"
   ].join(" ");
   const modelNamePattern = "'*qwen*' -o -iname '*deepseek*' -o -iname '*llama*' -o -iname '*llm*' -o -iname '*chatglm*' -o -iname '*glm*' -o -iname '*baichuan*' -o -iname '*internlm*' -o -iname '*yi-*' -o -iname '*mistral*' -o -iname '*mixtral*' -o -iname '*bert*' -o -iname '*bge*' -o -iname '*gte*' -o -iname '*rerank*' -o -iname '*embedding*' -o -iname '*clip*' -o -iname '*whisper*' -o -iname '*stable-diffusion*' -o -iname '*sdxl*' -o -iname '*flux*' -o -iname '*controlnet*' -o -iname '*lora*' -o -iname '*sam*' -o -iname '*yolo*' -o -iname '*minimax*' -o -iname '*mineru*' -o -iname '*cogview*' -o -iname '*medgemma*' -o -iname '*tinyllama*' -o -iname '*macbert*' -o -iname '*meshgraphnets*' -o -iname '*completion_*' -o -iname '*nes_*' -o -iname '*rag_*' -o -iname '*awq*' -o -iname '*w8a8*' -o -iname '*w4a8*' -o -iname '*int8*' -o -iname '*int4*'";
+  const modelPathRegex = "(^|/)(models?|JH_models)(/|$)|qwen|deepseek|llama|llm|chatglm|glm|baichuan|internlm|mistral|mixtral|bert|bge|gte|rerank|embedding|clip|whisper|stable-diffusion|sdxl|flux|controlnet|lora|sam|yolo|minimax|mineru|cogview|medgemma|tinyllama|macbert|meshgraphnets|completion_|nes_|rag_|awq|w8a8|w4a8|int8|int4";
   const prunedDirPattern = "-name '.git' -o -name '.svn' -o -name '__pycache__' -o -name 'node_modules' -o -name '.venv' -o -name 'venv' -o -name 'env' -o -name 'site-packages' -o -name 'dist' -o -name 'build'";
-  const dirFindPrefix = `find "$p" -mindepth 1 -maxdepth ${ASSET_SCAN_MAX_DEPTH} \\( -type d \\( ${prunedDirPattern} \\) -prune \\) -o`;
+  const pathFindPrefix = `timeout ${pathTimeoutSeconds}s find "$p" -mindepth 1 -maxdepth ${ASSET_SCAN_MAX_DEPTH} \\( -type d \\( ${prunedDirPattern} \\) -prune \\) -o`;
   const modelCommand = [
     `for p in ${pathList}; do`,
     `if [ -d "$p" ]; then`,
     `{`,
-    `${dirFindPrefix} -type d ! -name '.*' -print 2>/dev/null | while IFS= read -r d; do`,
-    `has_strong=$(find "$d" -maxdepth 2 -type f \\( ${modelStrongFilePattern} \\) -print -quit 2>/dev/null);`,
-    `has_meta=$(find "$d" -maxdepth 2 -type f \\( ${modelMetaFilePattern} \\) -print -quit 2>/dev/null);`,
+    `${pathFindPrefix} -type f \\( ${modelStrongFilePattern} \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
+    `${pathFindPrefix} -type d ! -name '.*' -print 2>/dev/null | grep -Ei ${shellQuote(modelPathRegex)} | while IFS= read -r d; do`,
+    `has_strong=$(timeout ${confirmTimeoutSeconds}s find "$d" -maxdepth 2 -type f \\( ${modelStrongFilePattern} \\) -print -quit 2>/dev/null);`,
+    `has_meta=$(timeout ${confirmTimeoutSeconds}s find "$d" -maxdepth 2 -type f \\( ${modelMetaFilePattern} \\) -print -quit 2>/dev/null);`,
     `if [ -n "$has_strong" ] || { [ -n "$has_meta" ] && { find "$d" -maxdepth 0 \\( -iname ${modelNamePattern} \\) -print -quit 2>/dev/null | grep -q . || printf '%s\\n' "$d" | grep -Eiq '(^|/)(models?|JH_models)(/|$)'; }; }; then`,
     `mt=$(date -r "$d" '+%Y-%m-%d %H:%M' 2>/dev/null || echo ''); printf 'MODEL\\t%s\\td\\t%s\\n' "$d" "$mt";`,
     `fi;`,
     `done;`,
-    `${dirFindPrefix} -type f \\( ${modelStrongFilePattern} \\) -printf 'MODEL\\t%p\\tf\\t%TY-%Tm-%Td %TH:%TM\\n' 2>/dev/null;`,
     `} | head -n ${perPathLimit};`,
     `fi;`,
     `done | head -n ${ASSET_MAX_ITEMS}`
