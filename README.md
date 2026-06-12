@@ -84,7 +84,7 @@ ssh root@10.0.0.13 nvidia-smi
    在项目目录执行：
 
    ```powershell
-   npm start
+   cmd.exe /c npm.cmd start
    ```
 
    或双击：
@@ -97,6 +97,12 @@ ssh root@10.0.0.13 nvidia-smi
 
    ```text
    http://localhost:3066
+   ```
+
+   如果 `localhost` 一直转圈或超时，改用 IPv4 地址：
+
+   ```text
+   http://127.0.0.1:3066
    ```
 
    如果要让同网段其他机器访问，需要放行 Windows 防火墙的 `3066` 端口，然后访问：
@@ -237,8 +243,10 @@ Windows PowerShell 示例：
 $env:PORT=3066
 $env:POLL_INTERVAL_MS=10000
 $env:SSH_TIMEOUT_MS=20000
-npm start
+cmd.exe /c npm.cmd start
 ```
+
+如果 PowerShell 报 `npm.ps1 cannot be loaded because running scripts is disabled`，这是执行策略拦截了 `npm.ps1`，请使用上面的 `cmd.exe /c npm.cmd start`，或直接运行 `node server.js`。
 
 Linux 示例：
 

@@ -1,5 +1,10 @@
 # 更新记录
 
+## 2026-06-12
+
+- 补充 Windows 本地调试说明：PowerShell 可能因执行策略拦截 `npm.ps1`，建议使用 `cmd.exe /c npm.cmd start`、`start-windows.bat` 或直接 `node server.js` 启动。
+- 记录本机 Codex/Windows 环境访问差异：`localhost:3066` 可能因 IPv6 解析超时，遇到页面打不开时优先使用 `http://127.0.0.1:3066/`。
+
 ## 2026-06-11
 
 - 保留“刷新模型资产”手动入口，方便本地测试和上线后立即盘点；同时模型路径盘点会每天 02:00 自动执行。
