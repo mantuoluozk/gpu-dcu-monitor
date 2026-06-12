@@ -156,7 +156,7 @@ function siteLinkHtml(site) {
 async function loadServers() {
   try {
     const payload = await requestJson("/api/servers");
-    state.servers = payload.servers || [];
+    state.servers = mergeServerAssetDetails(payload.servers || [], state.servers);
     state.pollIntervalMs = payload.pollIntervalMs || state.pollIntervalMs;
     state.assetRefreshing = Boolean(payload.assetRefreshing);
     els.lastRefresh.textContent = payload.lastRefresh ? `更新 ${formatTime(payload.lastRefresh)}` : "等待刷新";
@@ -171,6 +171,28 @@ async function loadServers() {
     showToast(error.message);
     scheduleNextLoad();
   }
+}
+
+function mergeServerAssetDetails(nextServers, previousServers) {
+  const previousById = new Map((previousServers || []).map((server) => [server.id, server]));
+  return nextServers.map((server) => {
+    const previous = previousById.get(server.id);
+    if (!previous?.assets || !server.assets) return server;
+    const hadModelDetails = (previous.assets.modelItems || []).length > 0;
+    const hadDockerDetails = (previous.assets.dockerImages || []).length > 0;
+    const hasModelDetails = (server.assets.modelItems || []).length > 0;
+    const hasDockerDetails = (server.assets.dockerImages || []).length > 0;
+    if ((!hadModelDetails || hasModelDetails) && (!hadDockerDetails || hasDockerDetails)) return server;
+    return {
+      ...server,
+      assets: {
+        ...previous.assets,
+        ...server.assets,
+        modelItems: hasModelDetails ? server.assets.modelItems : previous.assets.modelItems,
+        dockerImages: hasDockerDetails ? server.assets.dockerImages : previous.assets.dockerImages
+      }
+    };
+  });
 }
 
 function setView(view) {
@@ -654,11 +676,14 @@ function captureDetailScroll() {
 
 function restoreDetailScroll(scrollState, serverId) {
   if (!scrollState || scrollState.serverId !== serverId) return;
-  if (els.detail) els.detail.scrollTop = scrollState.detailTop || 0;
-  const modelList = document.querySelector(".model-asset-list");
-  const dockerList = document.querySelector(".docker-asset-list");
-  if (modelList) modelList.scrollTop = scrollState.modelTop || 0;
-  if (dockerList) dockerList.scrollTop = scrollState.dockerTop || 0;
+  window.requestAnimationFrame(() => {
+    if (els.detail?.dataset?.serverId !== serverId) return;
+    if (els.detail) els.detail.scrollTop = scrollState.detailTop || 0;
+    const modelList = document.querySelector(".model-asset-list");
+    const dockerList = document.querySelector(".docker-asset-list");
+    if (modelList) modelList.scrollTop = scrollState.modelTop || 0;
+    if (dockerList) dockerList.scrollTop = scrollState.dockerTop || 0;
+  });
 }
 
 function assetPanelHtml(assets) {
