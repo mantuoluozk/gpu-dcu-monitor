@@ -599,8 +599,10 @@ function gpuChips(gpus, count, serverKind) {
 }
 
 function renderDetail() {
+  const scrollState = captureDetailScroll();
   const server = state.servers.find((item) => item.id === state.selectedId);
   if (!server) {
+    delete els.detail.dataset.serverId;
     els.detail.innerHTML = `
       <div class="detail-empty">
         <div class="detail-pulse"></div>
@@ -614,6 +616,7 @@ function renderDetail() {
   const assets = server.assets || {};
   const kind = getServerKind(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
+  els.detail.dataset.serverId = server.id;
   els.detail.innerHTML = `
     <div class="detail-head">
       <div>
@@ -637,6 +640,25 @@ function renderDetail() {
     ${assetPanelHtml(assets)}
   `;
   document.querySelector("#detailEditBtn").addEventListener("click", () => openDialog(server));
+  restoreDetailScroll(scrollState, server.id);
+}
+
+function captureDetailScroll() {
+  return {
+    serverId: els.detail?.dataset?.serverId || null,
+    detailTop: els.detail ? els.detail.scrollTop : 0,
+    modelTop: document.querySelector(".model-asset-list")?.scrollTop || 0,
+    dockerTop: document.querySelector(".docker-asset-list")?.scrollTop || 0
+  };
+}
+
+function restoreDetailScroll(scrollState, serverId) {
+  if (!scrollState || scrollState.serverId !== serverId) return;
+  if (els.detail) els.detail.scrollTop = scrollState.detailTop || 0;
+  const modelList = document.querySelector(".model-asset-list");
+  const dockerList = document.querySelector(".docker-asset-list");
+  if (modelList) modelList.scrollTop = scrollState.modelTop || 0;
+  if (dockerList) dockerList.scrollTop = scrollState.dockerTop || 0;
 }
 
 function assetPanelHtml(assets) {
@@ -666,11 +688,11 @@ function assetPanelHtml(assets) {
       <div class="asset-columns">
         <div class="asset-column">
           <div class="asset-title"><strong>挂载目录模型</strong><span>${modelItems.length}</span></div>
-          <div class="asset-list">${modelList}</div>
+          <div class="asset-list model-asset-list">${modelList}</div>
         </div>
         <div class="asset-column">
           <div class="asset-title"><strong>Docker Images</strong><span>${dockerImages.length}</span></div>
-          <div class="asset-list">${dockerList}</div>
+          <div class="asset-list docker-asset-list">${dockerList}</div>
         </div>
       </div>
     </section>`;

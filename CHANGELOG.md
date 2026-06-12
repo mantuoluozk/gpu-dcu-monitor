@@ -5,6 +5,7 @@
 - 补充 Windows 本地调试说明：PowerShell 可能因执行策略拦截 `npm.ps1`，建议使用 `cmd.exe /c npm.cmd start`、`start-windows.bat` 或直接 `node server.js` 启动。
 - 记录本机 Codex/Windows 环境访问差异：`localhost:3066` 可能因 IPv6 解析超时，遇到页面打不开时优先使用 `http://127.0.0.1:3066/`。
 - 模型资产结果过滤框架和工程目录，例如 `vllm`、`LLaMA-Factory`、`stable-diffusion-webui`、`model-downloader-main`，避免把运行框架误当作模型展示。
+- 修复模型路径详情滚动时偶尔跳动的问题，自动刷新重绘同一台机器详情时会保留右侧详情和模型列表的滚动位置。
 
 ## 2026-06-11
 
