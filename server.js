@@ -943,6 +943,7 @@ function collapseModelItems(items) {
     const normalizedPath = normalizeAssetPath(item.path);
     if (!normalizedPath) continue;
     const modelPath = item.type === "file" ? path.posix.dirname(normalizedPath) : normalizedPath;
+    if (isNonModelAssetDirectory(modelPath)) continue;
     const existing = byPath.get(modelPath) || {
       name: normalizeAssetName(path.posix.basename(modelPath)),
       path: modelPath,
@@ -969,6 +970,28 @@ function collapseModelItems(items) {
     ...item,
     files: dedupeBy(item.files || [], (file) => file.path).slice(0, 30)
   }));
+}
+
+function isNonModelAssetDirectory(modelPath) {
+  const basename = path.posix.basename(normalizeAssetPath(modelPath)).toLowerCase();
+  const frameworkNames = [
+    "vllm",
+    "llama-factory",
+    "llamafactory",
+    "stable-diffusion-webui",
+    "text-generation-webui",
+    "model-downloader",
+    "model-downloader-main",
+    "transformers",
+    "diffusers",
+    "open-webui",
+    "webui",
+    "llama.cpp",
+    "ollama",
+    "xinference"
+  ];
+  const containerNames = ["model", "models", "jh_models"];
+  return frameworkNames.includes(basename) || containerNames.includes(basename);
 }
 
 function normalizeAssetPath(filePath) {
