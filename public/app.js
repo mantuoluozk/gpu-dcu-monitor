@@ -416,7 +416,6 @@ function StatTile({ label, value, tone }) {
 
 const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit }) {
   const status = server.status || {};
-  const assets = server.assets || {};
   const kind = getServerKind(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
   const busyPercent = totalCount ? Math.round(((status.busyCount || 0) / totalCount) * 100) : 0;
@@ -459,12 +458,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       )
     ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
-    h("div", { className: "model-line" }, modelSummary(server)),
-    h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
-      h("span", null, `模型 ${assets.modelCount || 0}`),
-      h("span", null, `镜像 ${assets.dockerCount || 0}`),
-      h("em", null, assetUpdatedText(assets))
-    )
+    h("div", { className: "model-line" }, modelSummary(server))
   );
 });
 

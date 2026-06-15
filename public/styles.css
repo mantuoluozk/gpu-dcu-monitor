@@ -713,44 +713,14 @@ code {
 }
 
 .model-line {
-  margin-top: 6px;
-  color: var(--accent-dark);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.asset-summary {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: 5px;
-  align-items: center;
-  min-width: 0;
   margin-top: auto;
-  padding-top: 7px;
-  color: var(--ink-soft);
-  font-size: 11px;
-}
-
-.asset-summary span {
-  border-radius: 999px;
-  background: var(--accent-soft);
+  padding-top: 6px;
   color: var(--accent-dark);
-  padding: 3px 7px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.asset-summary em {
-  min-width: 0;
   overflow: hidden;
-  color: var(--ink-soft);
-  font-style: normal;
-  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .icon-button {
