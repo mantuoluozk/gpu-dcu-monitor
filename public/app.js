@@ -26,7 +26,6 @@ function App() {
   const [siteConfig, setSiteConfig] = useState({ current: DEFAULT_SITE, sites: [] });
   const [lastRefresh, setLastRefresh] = useState(null);
   const [pollIntervalMs, setPollIntervalMs] = useState(10000);
-  const [assetRefreshing, setAssetRefreshing] = useState(false);
   const [assetType, setAssetType] = useState("all");
   const [assetState, setAssetState] = useState("all");
   const [assetResults, setAssetResults] = useState([]);
@@ -63,7 +62,6 @@ function App() {
     const payload = await requestJson("/api/servers");
     const nextServers = payload.servers || [];
     setPollIntervalMs(payload.pollIntervalMs || 10000);
-    setAssetRefreshing(Boolean(payload.assetRefreshing));
     setLastRefresh(payload.lastRefresh || null);
     setServers((previous) => mergeServerAssetDetails(nextServers, previous));
     setSelectedId((current) => {
@@ -206,19 +204,6 @@ function App() {
     }
   }, [fetchServers, notify]);
 
-  const refreshAssets = useCallback(async () => {
-    try {
-      setAssetRefreshing(true);
-      await requestJson("/api/assets/refresh", { method: "POST" });
-      await fetchServers();
-      notify("模型资产刷新完成");
-    } catch (error) {
-      notify(error.message);
-    } finally {
-      setAssetRefreshing(false);
-    }
-  }, [fetchServers, notify]);
-
   const saveServer = useCallback(async (body, id) => {
     try {
       const payload = await requestJson(id ? `/api/servers/${encodeURIComponent(id)}` : "/api/servers", {
@@ -277,9 +262,7 @@ function App() {
         searchLabel,
         searchPlaceholder,
         onRefresh: manualRefresh,
-        onAssetRefresh: refreshAssets,
-        onAdd: () => openDialog(null),
-        assetRefreshing
+        onAdd: () => openDialog(null)
       }),
       view === "dashboard"
         ? h(DashboardView, {
@@ -364,12 +347,6 @@ function TopRail(props) {
     ) : null,
     h("div", { className: "top-actions" },
       h("button", { className: "ghost-action", type: "button", onClick: props.onRefresh }, "刷新状态"),
-      h("button", {
-        className: `ghost-action${props.view === "assets" ? " asset-context" : ""}`,
-        type: "button",
-        disabled: props.assetRefreshing,
-        onClick: props.onAssetRefresh
-      }, props.assetRefreshing ? "资产盘点中" : "刷新模型资产"),
       h("button", { className: "primary-action", type: "button", onClick: props.onAdd }, "添加服务器")
     )
   );
@@ -608,7 +585,7 @@ function AssetView({ query, assetType, setAssetType, assetState, setAssetState, 
         ? h("div", { className: "asset-search-empty" }, h("strong", null, "搜索 Qwen、DeepSeek、镜像 tag 或完整路径"), h("span", null, "结果会按服务器聚合，并显示当前卡占用状态。"))
         : assetResults.length
           ? assetResults.map((group) => h(AssetResultCard, { group, query, copy, key: group.server?.id || group.server?.host }))
-          : !assetSearching ? h("div", { className: "asset-search-empty" }, h("strong", null, "没有匹配结果"), h("span", null, "可以先刷新模型资产，或换一个模型名 / 镜像 tag。")) : null
+          : !assetSearching ? h("div", { className: "asset-search-empty" }, h("strong", null, "没有匹配结果"), h("span", null, "可以换一个模型名、路径或镜像 tag。")) : null
     )
   );
 }
