@@ -22,6 +22,7 @@ function App() {
   const [groupFilter, setGroupFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [siteConfig, setSiteConfig] = useState({ current: DEFAULT_SITE, sites: [] });
   const [lastRefresh, setLastRefresh] = useState(null);
   const [pollIntervalMs, setPollIntervalMs] = useState(10000);
@@ -264,7 +265,7 @@ function App() {
   }, [notify]);
 
   return h("div", { className: "app-shell", "data-view": view },
-    h(Sidebar, { siteConfig, totals, filter, setFilter, groups, groupFilter, setGroupFilter, lastRefresh }),
+    h(Sidebar, { siteConfig, totals, filter, setFilter, lastRefresh }),
     h("main", { className: "command-center" },
       h(TopRail, {
         title: pageTitle,
@@ -281,18 +282,30 @@ function App() {
         assetRefreshing
       }),
       view === "dashboard"
-        ? h(DashboardView, { totals, groups, groupFilter, setGroupFilter, servers: filteredServers, selectedId, setSelectedId, openDialog })
+        ? h(DashboardView, {
+          totals,
+          groups,
+          groupFilter,
+          setGroupFilter,
+          servers: filteredServers,
+          selectedId,
+          onOpenServer: (server) => {
+            setSelectedId(server.id);
+            setDetailOpen(true);
+          },
+          openDialog
+        })
         : view === "assets"
           ? h(AssetView, { query, assetType, setAssetType, assetState, setAssetState, assetResults, assetTotalMatches, assetSearching, copy })
           : h(ChangelogView, { entries: changelogEntries, loading: changelogLoading, updatedAt: changelogUpdatedAt })
     ),
-    h(DetailPanel, { server: selectedServer, openDialog, copy }),
+    detailOpen && selectedServer ? h(DetailOverlay, { server: selectedServer, openDialog, copy, onClose: () => setDetailOpen(false) }) : null,
     dialogOpen ? h(ServerDialog, { server: dialogServer, groups: groupNames, onClose: () => setDialogOpen(false), onSave: saveServer, onDelete: deleteServer }) : null,
     toast ? h("div", { className: "toast" }, toast) : null
   );
 }
 
-function Sidebar({ siteConfig, totals, filter, setFilter, groups, groupFilter, setGroupFilter, lastRefresh }) {
+function Sidebar({ siteConfig, totals, filter, setFilter, lastRefresh }) {
   const current = siteConfig.current || DEFAULT_SITE;
   return h("aside", { className: "sidebar" },
     h("div", { className: "brand" },
@@ -319,23 +332,9 @@ function Sidebar({ siteConfig, totals, filter, setFilter, groups, groupFilter, s
         onClick: () => setFilter(value)
       }, h("span", null, label), h("strong", null, value === "all" ? totals.servers : totals[`${value}Servers`] || 0)))
     ),
-    h("div", { className: "section-label" }, "Groups"),
-    h("div", { className: "side-groups" },
-      h("button", {
-        className: `side-group${groupFilter === "all" ? " active" : ""}`,
-        type: "button",
-        onClick: () => setGroupFilter("all")
-      }, h("span", null, "全部分组"), h("strong", null, totals.servers)),
-      groups.map((group) => h("button", {
-        key: group.name,
-        className: `side-group${groupFilter === group.name ? " active" : ""}`,
-        type: "button",
-        onClick: () => setGroupFilter(group.name)
-      }, h("span", null, group.name), h("strong", null, group.count)))
-    ),
     h("div", { className: "sidebar-note" },
-      h("span", null, "Dispatch hint"),
-      h("strong", null, "先看空闲卡，再看模型资产；可用机器应该在 3 秒内被定位。")
+      h("span", null, "Dispatch"),
+      h("strong", null, `当前 ${totals.freeCards}/${totals.cards || 0} 张卡空闲，点击机器查看完整详情。`)
     )
   );
 }
@@ -376,7 +375,7 @@ function TopRail(props) {
   );
 }
 
-function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, selectedId, setSelectedId, openDialog }) {
+function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, selectedId, onOpenServer, openDialog }) {
   return h("section", { className: "dashboard-view" },
     h("div", { className: "hero-board" },
       h("div", { className: "hero-main" },
@@ -404,7 +403,7 @@ function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, s
         key: server.id,
         server,
         selected: server.id === selectedId,
-        onSelect: () => setSelectedId(server.id),
+        onSelect: () => onOpenServer(server),
         onEdit: () => openDialog(server)
       })))
       : h(EmptyState, { onAdd: () => openDialog(null) })
@@ -486,29 +485,27 @@ function gpuSlots(gpus, count, serverKind) {
   });
 }
 
-function DetailPanel({ server, openDialog, copy }) {
+function DetailOverlay({ server, openDialog, copy, onClose }) {
   if (!server) {
-    return h("aside", { className: "detail" },
-      h("div", { className: "detail-empty" },
-        h("div", { className: "detail-pulse" }),
-        h("h3", null, "选择一台服务器"),
-        h("p", null, "查看每张卡的占用、显存、温度、模型路径和镜像。")
-      )
-    );
+    return null;
   }
 
   const status = server.status || {};
   const assets = server.assets || {};
   const kind = getServerKind(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
-  return h("aside", { className: "detail" },
+  return h("div", { className: "detail-backdrop", role: "presentation", onMouseDown: onClose },
+    h("aside", { className: "detail detail-sheet", onMouseDown: (event) => event.stopPropagation() },
     h("div", { className: "detail-head" },
       h("div", null,
         h("p", { className: "eyebrow" }, `${totalCount ? `${totalCount}卡服务器` : "自动识别卡数"} · ${commandLabel(server.command)}`),
         h("h3", null, server.name),
         h("code", null, `${server.host}:${server.port}`)
       ),
-      h("button", { className: "icon-button", type: "button", onClick: () => openDialog(server) }, "✎")
+      h("div", { className: "detail-actions" },
+        h("button", { className: "icon-button", type: "button", onClick: () => openDialog(server), "aria-label": "编辑服务器" }, "✎"),
+        h("button", { className: "icon-button", type: "button", onClick: onClose, "aria-label": "关闭详情" }, "×")
+      )
     ),
     h("div", { className: "detail-meta" },
       h(MetaBox, { label: "状态", value: kindLabel(kind), tone: kind }),
@@ -519,6 +516,7 @@ function DetailPanel({ server, openDialog, copy }) {
     status.error ? h("div", { className: "asset-error" }, status.error) : null,
     h("div", { className: "gpu-list" }, (status.gpus || []).map((gpu) => h(GpuRow, { gpu, key: gpu.index }))),
     h(AssetPanel, { assets, copy })
+    )
   );
 }
 
