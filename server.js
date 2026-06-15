@@ -33,13 +33,9 @@ const DEFAULT_ASSET_PATHS = [
   "/apps",
   "/aidata",
   "/storage",
-  "/tpstor",
-  "/glusterfs-user-data",
   "/other",
   "/workspace",
-  "/workspaces",
-  "/opt",
-  "/Ring-2.5-1T"
+  "/workspaces"
 ];
 const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || DEFAULT_ASSET_PATHS.join(","));
 const ASSET_SCAN_MAX_DEPTH = clampInt(process.env.ASSET_SCAN_MAX_DEPTH, 1, 14, 6);
