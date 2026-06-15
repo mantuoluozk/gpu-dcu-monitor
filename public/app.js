@@ -1,176 +1,743 @@
-const state = {
-  servers: [],
-  view: "dashboard",
-  filter: "all",
-  groupFilter: "all",
-  query: "",
-  assetType: "all",
-  assetState: "all",
-  assetResults: [],
-  assetTotalMatches: 0,
-  assetSearching: false,
-  changelogEntries: [],
-  changelogUpdatedAt: null,
-  changelogLoading: false,
-  selectedId: null,
-  siteConfig: {
-    current: { name: "GPU/DCU 资源看板", description: "共享测试资源", url: "/" },
-    sites: []
-  },
-  pollIntervalMs: 10000,
-  assetRefreshing: false,
-  assetDetailLoading: false,
-  assetSearchTimer: null,
-  timer: null
-};
+const { useCallback, useEffect, useMemo, useRef, useState, memo } = React;
+const h = React.createElement;
 
-const els = {
-  grid: document.querySelector("#serverGrid"),
-  empty: document.querySelector("#emptyState"),
-  detail: document.querySelector("#detailPanel"),
-  brandTitle: document.querySelector("#brandTitle"),
-  siteEyebrow: document.querySelector("#siteEyebrow"),
-  siteSwitcher: document.querySelector("#siteSwitcher"),
-  pageTitle: document.querySelector("#pageTitle"),
-  groupFilters: document.querySelector("#groupFilters"),
-  groupOptions: document.querySelector("#groupOptions"),
-  lastRefresh: document.querySelector("#lastRefresh"),
-  search: document.querySelector("#searchInput"),
-  searchScope: document.querySelector("#searchScope"),
-  searchCluster: document.querySelector(".search-cluster"),
-  stats: document.querySelector(".stats"),
-  assetSearchPanel: document.querySelector("#assetSearchPanel"),
-  assetSearchSummary: document.querySelector("#assetSearchSummary"),
-  assetResultList: document.querySelector("#assetResultList"),
-  changelogPanel: document.querySelector("#changelogPanel"),
-  changelogUpdatedAt: document.querySelector("#changelogUpdatedAt"),
-  changelogList: document.querySelector("#changelogList"),
-  toast: document.querySelector("#toast"),
-  dialog: document.querySelector("#serverDialog"),
-  form: document.querySelector("#serverForm"),
-  dialogTitle: document.querySelector("#dialogTitle"),
-  deleteBtn: document.querySelector("#deleteServerBtn"),
-  fields: {
-    id: document.querySelector("#serverId"),
-    name: document.querySelector("#serverName"),
-    host: document.querySelector("#serverHost"),
-    user: document.querySelector("#serverUser"),
-    port: document.querySelector("#serverPort"),
-    command: document.querySelector("#serverCommand"),
-    group: document.querySelector("#serverGroup"),
-    tags: document.querySelector("#serverTags")
-  }
-};
+const DEFAULT_SITE = { name: "GPU/DCU 资源调度台", description: "共享测试资源", url: "/" };
+const DEFAULT_GROUPS = ["通信中兴组", "政府联想组", "企业浪潮组", "金融华三组", "深度组", "未分组"];
+const FILTERS = [
+  ["all", "全部"],
+  ["free", "空闲"],
+  ["busy", "占用"],
+  ["offline", "离线"]
+];
+const VIEWS = [
+  ["dashboard", "资源池"],
+  ["assets", "模型检索"],
+  ["changelog", "更新日志"]
+];
 
-document.querySelector("#addServerBtn").addEventListener("click", () => openDialog());
-document.querySelector("#emptyAddBtn").addEventListener("click", () => openDialog());
-document.querySelector("#closeDialogBtn").addEventListener("click", () => els.dialog.close());
-document.querySelector("#refreshBtn").addEventListener("click", manualRefresh);
-const assetRefreshButton = document.querySelector("#assetRefreshBtn");
-if (assetRefreshButton) assetRefreshButton.addEventListener("click", refreshAssets);
-document.querySelector("#dashboardViewBtn").addEventListener("click", () => setView("dashboard"));
-document.querySelector("#assetViewBtn").addEventListener("click", () => setView("assets"));
-document.querySelector("#changelogViewBtn").addEventListener("click", () => setView("changelog"));
-document.querySelectorAll(".asset-filter").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.assetType = button.dataset.assetType;
-    document.querySelectorAll(".asset-filter").forEach((item) => item.classList.toggle("active", item === button));
-    searchAssets();
-  });
-});
-document.querySelectorAll(".asset-state").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.assetState = button.dataset.assetState;
-    document.querySelectorAll(".asset-state").forEach((item) => item.classList.toggle("active", item === button));
-    searchAssets();
-  });
-});
-document.querySelectorAll(".filter").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.filter = button.dataset.filter;
-    document.querySelectorAll(".filter").forEach((item) => item.classList.toggle("active", item === button));
-    render();
-  });
-});
-els.search.addEventListener("input", () => {
-  state.query = els.search.value.trim().toLowerCase();
-  if (state.view === "assets") {
-    queueAssetSearch();
-  } else {
-    render();
-  }
-});
-els.form.addEventListener("submit", saveServer);
-els.deleteBtn.addEventListener("click", deleteSelectedServer);
+function App() {
+  const [servers, setServers] = useState([]);
+  const [view, setView] = useState("dashboard");
+  const [filter, setFilter] = useState("all");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [siteConfig, setSiteConfig] = useState({ current: DEFAULT_SITE, sites: [] });
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [pollIntervalMs, setPollIntervalMs] = useState(10000);
+  const [assetRefreshing, setAssetRefreshing] = useState(false);
+  const [assetType, setAssetType] = useState("all");
+  const [assetState, setAssetState] = useState("all");
+  const [assetResults, setAssetResults] = useState([]);
+  const [assetTotalMatches, setAssetTotalMatches] = useState(0);
+  const [assetSearching, setAssetSearching] = useState(false);
+  const [assetDetailLoading, setAssetDetailLoading] = useState(false);
+  const [changelogEntries, setChangelogEntries] = useState([]);
+  const [changelogUpdatedAt, setChangelogUpdatedAt] = useState(null);
+  const [changelogLoading, setChangelogLoading] = useState(false);
+  const [dialogServer, setDialogServer] = useState(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [toast, setToast] = useState("");
 
-init();
+  const pollRef = useRef(pollIntervalMs);
+  const selectedIdRef = useRef(selectedId);
+  const assetSearchSeq = useRef(0);
+  const toastTimer = useRef(null);
 
-async function init() {
-  await loadSiteConfig();
-  loadServers();
-}
+  useEffect(() => {
+    pollRef.current = pollIntervalMs;
+  }, [pollIntervalMs]);
 
-async function loadSiteConfig() {
-  try {
-    const payload = await requestJson("/api/site-config");
-    state.siteConfig = {
-      current: payload.current || state.siteConfig.current,
-      sites: payload.sites || []
-    };
-  } catch (error) {
-    console.warn(error);
-  }
-  renderSiteConfig();
-}
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
-function renderSiteConfig() {
-  const current = state.siteConfig.current || {};
-  if (els.brandTitle) els.brandTitle.textContent = current.name || "GPU/DCU 资源看板";
-  if (els.siteEyebrow) els.siteEyebrow.textContent = current.description || "共享测试资源";
+  const notify = useCallback((message) => {
+    setToast(message);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 2600);
+  }, []);
 
-  if (!els.siteSwitcher) return;
-  const sites = state.siteConfig.sites || [];
-  if (!sites.length) {
-    els.siteSwitcher.classList.add("hidden");
-    return;
-  }
-
-  els.siteSwitcher.classList.remove("hidden");
-  els.siteSwitcher.innerHTML = `
-    <div class="site-switcher-title">站点切换</div>
-    <div class="site-link-list">
-      ${sites.map(siteLinkHtml).join("")}
-    </div>`;
-}
-
-function siteLinkHtml(site) {
-  const active = site.current ? " active" : "";
-  const description = site.description ? `<span>${escapeHtml(site.description)}</span>` : "";
-  return `
-    <a class="site-link${active}" href="${escapeAttr(site.url)}">
-      <strong>${escapeHtml(site.name)}</strong>
-      ${description}
-    </a>`;
-}
-
-async function loadServers() {
-  try {
+  const fetchServers = useCallback(async () => {
     const payload = await requestJson("/api/servers");
-    state.servers = mergeServerAssetDetails(payload.servers || [], state.servers);
-    state.pollIntervalMs = payload.pollIntervalMs || state.pollIntervalMs;
-    state.assetRefreshing = Boolean(payload.assetRefreshing);
-    els.lastRefresh.textContent = payload.lastRefresh ? `更新 ${formatTime(payload.lastRefresh)}` : "等待刷新";
-    if (!state.selectedId && state.servers[0]) state.selectedId = state.servers[0].id;
-    if (state.selectedId && !state.servers.some((server) => server.id === state.selectedId)) {
-      state.selectedId = state.servers[0]?.id || null;
+    const nextServers = payload.servers || [];
+    setPollIntervalMs(payload.pollIntervalMs || 10000);
+    setAssetRefreshing(Boolean(payload.assetRefreshing));
+    setLastRefresh(payload.lastRefresh || null);
+    setServers((previous) => mergeServerAssetDetails(nextServers, previous));
+    setSelectedId((current) => {
+      if (current && nextServers.some((server) => server.id === current)) return current;
+      return nextServers[0]?.id || null;
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    async function loop() {
+      try {
+        await fetchServers();
+      } catch (error) {
+        notify(error.message);
+      } finally {
+        if (!cancelled) timer = window.setTimeout(loop, pollRef.current);
+      }
     }
-    render();
-    loadSelectedAssets();
-    scheduleNextLoad();
-  } catch (error) {
-    showToast(error.message);
-    scheduleNextLoad();
+
+    loop();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [fetchServers, notify]);
+
+  useEffect(() => {
+    let cancelled = false;
+    requestJson("/api/site-config")
+      .then((payload) => {
+        if (cancelled) return;
+        setSiteConfig({
+          current: payload.current || DEFAULT_SITE,
+          sites: payload.sites || []
+        });
+      })
+      .catch((error) => console.warn(error));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId || assetDetailLoading) return;
+    let cancelled = false;
+    setAssetDetailLoading(true);
+    requestJson(`/api/servers/${encodeURIComponent(selectedId)}/assets`)
+      .then((payload) => {
+        if (cancelled || !payload.assets) return;
+        setServers((items) => items.map((server) => (
+          server.id === selectedId ? { ...server, assets: payload.assets } : server
+        )));
+      })
+      .catch((error) => console.warn(error))
+      .finally(() => {
+        if (!cancelled) setAssetDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (view !== "assets") return;
+    const value = query.trim();
+    const seq = assetSearchSeq.current + 1;
+    assetSearchSeq.current = seq;
+
+    if (!value) {
+      setAssetResults([]);
+      setAssetTotalMatches(0);
+      setAssetSearching(false);
+      return;
+    }
+
+    setAssetSearching(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q: value, type: assetType, state: assetState, group: groupFilter });
+        const payload = await requestJson(`/api/assets/search?${params.toString()}`);
+        if (assetSearchSeq.current !== seq) return;
+        setAssetResults(payload.results || []);
+        setAssetTotalMatches(payload.totalMatches || 0);
+      } catch (error) {
+        notify(error.message);
+      } finally {
+        if (assetSearchSeq.current === seq) setAssetSearching(false);
+      }
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [view, query, assetType, assetState, groupFilter, notify]);
+
+  useEffect(() => {
+    if (view !== "changelog" || changelogEntries.length || changelogLoading) return;
+    setChangelogLoading(true);
+    requestJson("/api/changelog")
+      .then((payload) => {
+        setChangelogEntries(payload.entries || []);
+        setChangelogUpdatedAt(payload.updatedAt || null);
+      })
+      .catch((error) => notify(error.message))
+      .finally(() => setChangelogLoading(false));
+  }, [view, changelogEntries.length, changelogLoading, notify]);
+
+  const totals = useMemo(() => summarizeServers(servers), [servers]);
+  const groups = useMemo(() => groupSummaries(servers), [servers]);
+  const groupNames = useMemo(() => [...new Set([...DEFAULT_GROUPS, ...groups.map((group) => group.name)])], [groups]);
+  const selectedServer = useMemo(() => servers.find((server) => server.id === selectedId) || null, [servers, selectedId]);
+  const deferredQuery = query.trim().toLowerCase();
+  const filteredServers = useMemo(
+    () => servers.filter((server) => {
+      const kind = getServerKind(server);
+      if (filter !== "all" && filter !== kind) return false;
+      if (groupFilter !== "all" && serverGroup(server) !== groupFilter) return false;
+      return matchesDashboardQuery(server, deferredQuery);
+    }),
+    [servers, filter, groupFilter, deferredQuery]
+  );
+
+  const pageTitle = view === "assets" ? "模型镜像检索" : view === "changelog" ? "更新日志" : "服务器占用情况";
+  const searchLabel = view === "assets" ? "模型搜索" : "资源搜索";
+  const searchPlaceholder = view === "assets" ? "搜索模型名、路径或镜像 tag" : "搜索服务器、IP、分组、型号";
+
+  const openDialog = useCallback((server) => {
+    setDialogServer(server || null);
+    setDialogOpen(true);
+  }, []);
+
+  const manualRefresh = useCallback(async () => {
+    try {
+      await requestJson("/api/refresh", { method: "POST" });
+      await fetchServers();
+      notify("刷新完成");
+    } catch (error) {
+      notify(error.message);
+    }
+  }, [fetchServers, notify]);
+
+  const refreshAssets = useCallback(async () => {
+    try {
+      setAssetRefreshing(true);
+      await requestJson("/api/assets/refresh", { method: "POST" });
+      await fetchServers();
+      notify("模型资产刷新完成");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setAssetRefreshing(false);
+    }
+  }, [fetchServers, notify]);
+
+  const saveServer = useCallback(async (body, id) => {
+    try {
+      const payload = await requestJson(id ? `/api/servers/${encodeURIComponent(id)}` : "/api/servers", {
+        method: id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      setSelectedId(payload.server.id);
+      setDialogOpen(false);
+      await fetchServers();
+      notify("已保存");
+    } catch (error) {
+      notify(error.message);
+    }
+  }, [fetchServers, notify]);
+
+  const deleteServer = useCallback(async (id) => {
+    if (!id) return;
+    try {
+      await requestJson(`/api/servers/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setSelectedId(null);
+      setDialogOpen(false);
+      await fetchServers();
+      notify("已删除");
+    } catch (error) {
+      notify(error.message);
+    }
+  }, [fetchServers, notify]);
+
+  const copy = useCallback(async (text, label) => {
+    if (!text) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(text);
+      else fallbackCopyText(text);
+      notify(`${label}已复制`);
+    } catch (error) {
+      try {
+        fallbackCopyText(text);
+        notify(`${label}已复制`);
+      } catch {
+        notify("复制失败");
+      }
+    }
+  }, [notify]);
+
+  return h("div", { className: "app-shell", "data-view": view },
+    h(Sidebar, { siteConfig, totals, filter, setFilter, groups, groupFilter, setGroupFilter, lastRefresh }),
+    h("main", { className: "command-center" },
+      h(TopRail, {
+        title: pageTitle,
+        description: siteConfig.current.description || DEFAULT_SITE.description,
+        view,
+        setView,
+        query,
+        setQuery,
+        searchLabel,
+        searchPlaceholder,
+        onRefresh: manualRefresh,
+        onAssetRefresh: refreshAssets,
+        onAdd: () => openDialog(null),
+        assetRefreshing
+      }),
+      view === "dashboard"
+        ? h(DashboardView, { totals, groups, groupFilter, setGroupFilter, servers: filteredServers, selectedId, setSelectedId, openDialog })
+        : view === "assets"
+          ? h(AssetView, { query, assetType, setAssetType, assetState, setAssetState, assetResults, assetTotalMatches, assetSearching, copy })
+          : h(ChangelogView, { entries: changelogEntries, loading: changelogLoading, updatedAt: changelogUpdatedAt })
+    ),
+    h(DetailPanel, { server: selectedServer, openDialog, copy }),
+    dialogOpen ? h(ServerDialog, { server: dialogServer, groups: groupNames, onClose: () => setDialogOpen(false), onSave: saveServer, onDelete: deleteServer }) : null,
+    toast ? h("div", { className: "toast" }, toast) : null
+  );
+}
+
+function Sidebar({ siteConfig, totals, filter, setFilter, groups, groupFilter, setGroupFilter, lastRefresh }) {
+  const current = siteConfig.current || DEFAULT_SITE;
+  return h("aside", { className: "sidebar" },
+    h("div", { className: "brand" },
+      h("div", { className: "brand-mark" }, "DCU"),
+      h("div", null,
+        h("h1", null, current.name || DEFAULT_SITE.name),
+        h("p", null, lastRefresh ? `更新 ${formatTime(lastRefresh)}` : "等待刷新")
+      )
+    ),
+    siteConfig.sites?.length ? h("nav", { className: "site-switcher", "aria-label": "站点切换" },
+      h("div", { className: "section-label" }, "Sites"),
+      h("div", { className: "site-link-list" }, siteConfig.sites.map((site) => h("a", {
+        key: site.url || site.name,
+        className: `site-link${site.current ? " active" : ""}`,
+        href: site.url
+      }, h("strong", null, site.name), site.description ? h("span", null, site.description) : null)))
+    ) : null,
+    h("div", { className: "section-label" }, "Status"),
+    h("div", { className: "filters", role: "tablist", "aria-label": "服务器状态筛选" },
+      FILTERS.map(([value, label]) => h("button", {
+        key: value,
+        className: `filter${filter === value ? " active" : ""}`,
+        type: "button",
+        onClick: () => setFilter(value)
+      }, h("span", null, label), h("strong", null, value === "all" ? totals.servers : totals[`${value}Servers`] || 0)))
+    ),
+    h("div", { className: "section-label" }, "Groups"),
+    h("div", { className: "side-groups" },
+      h("button", {
+        className: `side-group${groupFilter === "all" ? " active" : ""}`,
+        type: "button",
+        onClick: () => setGroupFilter("all")
+      }, h("span", null, "全部分组"), h("strong", null, totals.servers)),
+      groups.map((group) => h("button", {
+        key: group.name,
+        className: `side-group${groupFilter === group.name ? " active" : ""}`,
+        type: "button",
+        onClick: () => setGroupFilter(group.name)
+      }, h("span", null, group.name), h("strong", null, group.count)))
+    ),
+    h("div", { className: "sidebar-note" },
+      h("span", null, "Dispatch hint"),
+      h("strong", null, "先看空闲卡，再看模型资产；可用机器应该在 3 秒内被定位。")
+    )
+  );
+}
+
+function TopRail(props) {
+  return h("section", { className: "top-rail" },
+    h("div", { className: "page-title" },
+      h("p", { className: "eyebrow" }, props.description),
+      h("h2", null, props.title)
+    ),
+    h("div", { className: "view-tabs", role: "tablist", "aria-label": "视图切换" },
+      VIEWS.map(([value, label]) => h("button", {
+        key: value,
+        className: `view-tab${props.view === value ? " active" : ""}`,
+        type: "button",
+        onClick: () => props.setView(value)
+      }, label))
+    ),
+    props.view !== "changelog" ? h("label", { className: "search-box" },
+      h("span", null, props.searchLabel),
+      h("input", {
+        value: props.query,
+        type: "search",
+        placeholder: props.searchPlaceholder,
+        onChange: (event) => props.setQuery(event.target.value)
+      })
+    ) : null,
+    h("div", { className: "top-actions" },
+      h("button", { className: "ghost-action", type: "button", onClick: props.onRefresh }, "刷新状态"),
+      h("button", {
+        className: `ghost-action${props.view === "assets" ? " asset-context" : ""}`,
+        type: "button",
+        disabled: props.assetRefreshing,
+        onClick: props.onAssetRefresh
+      }, props.assetRefreshing ? "资产盘点中" : "刷新模型资产"),
+      h("button", { className: "primary-action", type: "button", onClick: props.onAdd }, "添加服务器")
+    )
+  );
+}
+
+function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, selectedId, setSelectedId, openDialog }) {
+  return h("section", { className: "dashboard-view" },
+    h("div", { className: "hero-board" },
+      h("div", { className: "hero-main" },
+        h("span", null, "RESOURCE POOL"),
+        h("strong", null, `${totals.freeCards}/${totals.cards || 0}`),
+        h("em", null, "空闲卡 / 总卡数")
+      ),
+      h("div", { className: "stat-strip" },
+        h(StatTile, { label: "服务器", value: totals.servers }),
+        h(StatTile, { label: "占用卡", value: totals.busyCards, tone: "warn" }),
+        h(StatTile, { label: "离线", value: totals.offlineServers, tone: "danger" })
+      )
+    ),
+    h("div", { className: "group-panel" },
+      h("button", { className: `group-filter${groupFilter === "all" ? " active" : ""}`, type: "button", onClick: () => setGroupFilter("all") }, "全部分组"),
+      groups.map((group) => h("button", {
+        key: group.name,
+        className: `group-filter${groupFilter === group.name ? " active" : ""}`,
+        type: "button",
+        onClick: () => setGroupFilter(group.name)
+      }, `${group.name} ${group.count}`))
+    ),
+    servers.length
+      ? h("div", { className: "server-grid" }, servers.map((server) => h(ServerCard, {
+        key: server.id,
+        server,
+        selected: server.id === selectedId,
+        onSelect: () => setSelectedId(server.id),
+        onEdit: () => openDialog(server)
+      })))
+      : h(EmptyState, { onAdd: () => openDialog(null) })
+  );
+}
+
+function StatTile({ label, value, tone }) {
+  return h("div", { className: `stat-tile ${tone || ""}` }, h("span", null, label), h("strong", null, value));
+}
+
+const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit }) {
+  const status = server.status || {};
+  const assets = server.assets || {};
+  const kind = getServerKind(server);
+  const totalCount = status.totalCount || server.gpuCount || 0;
+  const busyPercent = totalCount ? Math.round(((status.busyCount || 0) / totalCount) * 100) : 0;
+  const tags = [...new Set([serverGroup(server), ...(server.tags?.length ? server.tags : [totalCount ? `${totalCount}卡` : "自动识别"])])];
+
+  return h("article", {
+    className: `server-card ${serverOccupancyClass(server)}${selected ? " selected" : ""}`,
+    style: { "--busy": `${busyPercent}%` },
+    tabIndex: 0,
+    onClick: onSelect,
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onSelect();
+      }
+    }
+  },
+    h("div", { className: "card-topline" },
+      h("div", null,
+        h("h3", null, server.name),
+        h("code", null, `${server.user ? `${server.user}@` : ""}${server.host}:${server.port}`)
+      ),
+      h("span", { className: `status-pill status-${kind}` }, kindLabel(kind))
+    ),
+    h("div", { className: "rack-meter" },
+      h("div", { className: "donut" }, h("span", null, totalCount ? `${status.busyCount || 0}/${totalCount}` : "-")),
+      h("div", null,
+        h("strong", null, status.summary || "等待刷新"),
+        h("span", null, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
+      )
+    ),
+    h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
+    h("div", { className: "model-line" }, modelSummary(server)),
+    h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
+      h("span", null, `模型 ${assets.modelCount || 0}`),
+      h("span", null, `镜像 ${assets.dockerCount || 0}`),
+      h("em", null, assetUpdatedText(assets))
+    ),
+    h("div", { className: "tag-list" },
+      tags.map((tag) => h("span", { className: "tag", key: tag }, tag)),
+      h("button", {
+        className: "icon-button edit-card",
+        type: "button",
+        "aria-label": "编辑服务器",
+        onClick: (event) => {
+          event.stopPropagation();
+          onEdit();
+        }
+      }, "✎")
+    )
+  );
+});
+
+function gpuSlots(gpus, count, serverKind) {
+  const list = gpus.length ? gpus : Array.from({ length: count }, (_, index) => ({ index, state: "unknown" }));
+  return list.slice(0, count || 0).map((gpu) => {
+    const cls = serverKind === "offline" ? "offline" : gpu.state || "unknown";
+    const chipLevel = gpuOccupancyClass(gpu);
+    const vram = normalizePercent(gpu.memoryUtilization);
+    const compute = normalizePercent(gpu.utilization);
+    return h("span", { className: `slot ${cls} ${chipLevel}`, key: gpu.index, title: `#${gpu.index} 显存 ${formatPercent(gpu.memoryUtilization)} 算力 ${formatPercent(gpu.utilization)}` },
+      h("b", null, `#${gpu.index}`),
+      h("i", { style: { height: `${Math.max(vram, compute)}%` } }),
+      h("em", null, `${Math.max(vram, compute)}%`)
+    );
+  });
+}
+
+function DetailPanel({ server, openDialog, copy }) {
+  if (!server) {
+    return h("aside", { className: "detail" },
+      h("div", { className: "detail-empty" },
+        h("div", { className: "detail-pulse" }),
+        h("h3", null, "选择一台服务器"),
+        h("p", null, "查看每张卡的占用、显存、温度、模型路径和镜像。")
+      )
+    );
   }
+
+  const status = server.status || {};
+  const assets = server.assets || {};
+  const kind = getServerKind(server);
+  const totalCount = status.totalCount || server.gpuCount || 0;
+  return h("aside", { className: "detail" },
+    h("div", { className: "detail-head" },
+      h("div", null,
+        h("p", { className: "eyebrow" }, `${totalCount ? `${totalCount}卡服务器` : "自动识别卡数"} · ${commandLabel(server.command)}`),
+        h("h3", null, server.name),
+        h("code", null, `${server.host}:${server.port}`)
+      ),
+      h("button", { className: "icon-button", type: "button", onClick: () => openDialog(server) }, "✎")
+    ),
+    h("div", { className: "detail-meta" },
+      h(MetaBox, { label: "状态", value: kindLabel(kind), tone: kind }),
+      h(MetaBox, { label: "占用", value: totalCount ? `${status.busyCount || 0}/${totalCount}` : "识别中" }),
+      h(MetaBox, { label: "分组", value: serverGroup(server) }),
+      h(MetaBox, { label: "延迟", value: status.latencyMs ? `${status.latencyMs}ms` : "-" })
+    ),
+    status.error ? h("div", { className: "asset-error" }, status.error) : null,
+    h("div", { className: "gpu-list" }, (status.gpus || []).map((gpu) => h(GpuRow, { gpu, key: gpu.index }))),
+    h(AssetPanel, { assets, copy })
+  );
+}
+
+function MetaBox({ label, value, tone }) {
+  return h("div", { className: `meta-box ${tone || ""}` }, h("span", null, label), h("strong", null, value));
+}
+
+function GpuRow({ gpu }) {
+  const utilization = normalizePercent(gpu.utilization);
+  const memoryUtilization = normalizePercent(gpu.memoryUtilization);
+  const memory = gpu.memoryTotalMiB
+    ? `${gpu.memoryUsedMiB || 0}/${gpu.memoryTotalMiB} MiB`
+    : gpu.memoryUtilization !== null && gpu.memoryUtilization !== undefined ? `${gpu.memoryUtilization}%` : "-";
+  return h("div", { className: "gpu-row" },
+    h("div", { className: "gpu-row-head" },
+      h("strong", null, `卡 #${gpu.index}${gpu.model ? ` · ${gpu.model}` : ""}`),
+      h("span", null, gpuStateLabel(gpu.state))
+    ),
+    h(MetricLine, { label: "显存", value: formatPercent(gpu.memoryUtilization), percent: memoryUtilization, level: occupancyClass(memoryUtilization) }),
+    h(MetricLine, { label: "算力", value: formatPercent(gpu.utilization), percent: utilization, level: occupancyClass(utilization) }),
+    h("div", { className: "gpu-metrics" },
+      h("span", null, `显存 ${memory}`),
+      h("span", null, `温度 ${gpu.temperatureC ?? "-"}℃`),
+      h("span", null, `功耗 ${gpu.powerW ?? "-"}W`)
+    )
+  );
+}
+
+function MetricLine({ label, value, percent, level }) {
+  return h("div", { className: "metric-line" },
+    h("span", null, label),
+    h("div", { className: "bar" }, h("i", { className: level, style: { width: `${percent}%` } })),
+    h("strong", null, value)
+  );
+}
+
+function AssetPanel({ assets, copy }) {
+  const modelItems = assets.modelItems || [];
+  const dockerImages = assets.dockerImages || [];
+  return h("section", { className: "asset-panel" },
+    h("div", { className: "asset-head" },
+      h("div", null, h("p", { className: "eyebrow" }, "Assets"), h("h3", null, "模型路径与镜像")),
+      h("span", null, assetUpdatedText(assets))
+    ),
+    assets.error ? h("div", { className: "asset-error" }, assets.error) : null,
+    h("div", { className: "asset-columns" },
+      h("div", { className: "asset-column" },
+        h("div", { className: "asset-title" }, h("strong", null, "挂载目录模型"), h("span", null, modelItems.length)),
+        h("div", { className: "asset-list" },
+          modelItems.length ? modelItems.slice(0, 80).map((item) => h("button", {
+            className: "asset-item",
+            key: item.path,
+            type: "button",
+            onClick: () => copy(item.path, "模型路径")
+          }, h("strong", null, item.name || "-"), h("span", null, item.path || "-"), h("em", null, `${item.root || "-"} · 目录`)))
+            : h("div", { className: "asset-empty" }, assets.modelCount ? "正在加载模型详情" : "未发现模型目录或文件")
+        )
+      ),
+      h("div", { className: "asset-column" },
+        h("div", { className: "asset-title" }, h("strong", null, "Docker Images"), h("span", null, dockerImages.length)),
+        h("div", { className: "asset-list" },
+          dockerImages.length ? dockerImages.slice(0, 80).map((image) => h("button", {
+            className: "asset-item",
+            key: `${image.repository}:${image.tag}:${image.imageId}`,
+            type: "button",
+            onClick: () => copy(`${image.repository}:${image.tag}`, "镜像")
+          }, h("strong", null, `${image.repository || "-"}:${image.tag || "-"}`), h("span", null, `${image.imageId || "-"} · ${image.size || "-"}`), h("em", null, image.created || "-")))
+            : h("div", { className: "asset-empty" }, assets.dockerCount ? "正在加载镜像详情" : "未发现 Docker 镜像")
+        )
+      )
+    )
+  );
+}
+
+function AssetView({ query, assetType, setAssetType, assetState, setAssetState, assetResults, assetTotalMatches, assetSearching, copy }) {
+  const summary = !query.trim()
+    ? "输入模型名、路径或镜像名称开始查找。"
+    : assetSearching
+      ? `正在查找“${query.trim()}”...`
+      : assetResults.length
+        ? `找到 ${assetTotalMatches} 条匹配，分布在 ${assetResults.length} 台服务器。`
+        : `没有找到“${query.trim()}”相关的模型或镜像。`;
+  return h("section", { className: "asset-workbench" },
+    h("div", { className: "asset-toolbar" },
+      h(FilterGroup, { items: [["all", "全部"], ["model", "模型"], ["docker", "镜像"]], value: assetType, onChange: setAssetType }),
+      h(FilterGroup, { items: [["all", "全部机器"], ["free", "空闲机器"], ["busy", "占用机器"]], value: assetState, onChange: setAssetState })
+    ),
+    h("div", { className: "asset-search-summary" }, summary),
+    h("div", { className: "asset-result-list" },
+      !query.trim()
+        ? h("div", { className: "asset-search-empty" }, h("strong", null, "搜索 Qwen、DeepSeek、镜像 tag 或完整路径"), h("span", null, "结果会按服务器聚合，并显示当前卡占用状态。"))
+        : assetResults.length
+          ? assetResults.map((group) => h(AssetResultCard, { group, query, copy, key: group.server?.id || group.server?.host }))
+          : !assetSearching ? h("div", { className: "asset-search-empty" }, h("strong", null, "没有匹配结果"), h("span", null, "可以先刷新模型资产，或换一个模型名 / 镜像 tag。")) : null
+    )
+  );
+}
+
+function FilterGroup({ items, value, onChange }) {
+  return h("div", { className: "asset-filter-group" }, items.map(([itemValue, label]) => h("button", {
+    key: itemValue,
+    className: `asset-filter${value === itemValue ? " active" : ""}`,
+    type: "button",
+    onClick: () => onChange(itemValue)
+  }, label)));
+}
+
+function AssetResultCard({ group, query, copy }) {
+  const server = group.server || {};
+  const sshCommand = `ssh ${server.user || "root"}@${server.host}`;
+  return h("article", { className: "asset-result-card" },
+    h("div", { className: "asset-result-head" },
+      h("div", null,
+        h("div", { className: "asset-server-title" }, server.name || server.host),
+        h("div", { className: "asset-server-meta" }, [server.group || "未分组", `${server.host}:${server.port || 22}`, server.summary || "-"].map((item) => h("span", { key: item }, item)))
+      ),
+      h("span", { className: `status-pill status-${server.state || "pending"}` }, kindLabel(server.state))
+    ),
+    h("div", { className: "asset-copy-row" },
+      h("button", { className: "mini-copy", type: "button", onClick: () => copy(server.host, "IP") }, "复制 IP"),
+      h("button", { className: "mini-copy", type: "button", onClick: () => copy(sshCommand, "SSH 命令") }, "复制 SSH")
+    ),
+    h("div", { className: "asset-match-list" }, (group.matches || []).map((match, index) => h(AssetMatch, { match, query, copy, key: `${match.type}:${match.value}:${index}` })))
+  );
+}
+
+function AssetMatch({ match, query, copy }) {
+  const label = match.type === "docker" ? "镜像" : "模型";
+  return h("div", { className: `asset-match ${match.type}` },
+    h("span", { className: "asset-kind" }, label),
+    h("div", { className: "asset-match-main" },
+      h(Highlight, { value: match.label || "-", query }),
+      h(Highlight, { value: match.value || "-", query, tag: "span" }),
+      h("em", null, match.meta || "")
+    ),
+    h("button", { className: "mini-copy", type: "button", onClick: () => copy(match.copyText || match.value || "", label) }, "复制")
+  );
+}
+
+function Highlight({ value, query, tag }) {
+  const parts = splitHighlight(value, query);
+  return h(tag || "strong", null, parts.map((part, index) => (
+    part.hit ? h("mark", { key: index }, part.text) : part.text
+  )));
+}
+
+function ChangelogView({ entries, loading, updatedAt }) {
+  return h("section", { className: "changelog-panel" },
+    h("div", { className: "changelog-head" },
+      h("div", null, h("p", { className: "eyebrow" }, "Versions"), h("h3", null, "最近更新")),
+      h("span", null, updatedAt ? `同步 ${formatTime(updatedAt)}` : "读取中")
+    ),
+    h("div", { className: "changelog-list" },
+      loading && !entries.length ? h("div", { className: "changelog-empty" }, "正在读取更新日志...")
+        : entries.length ? entries.map((entry) => h("article", { className: "changelog-entry", key: entry.title },
+          h("div", { className: "changelog-date" }, entry.title || ""),
+          h("ul", null, (entry.items || []).map((item, index) => h("li", { key: index }, item)))
+        )) : h("div", { className: "changelog-empty" }, "暂无更新记录")
+    )
+  );
+}
+
+function EmptyState({ onAdd }) {
+  return h("section", { className: "empty-state" }, h("div", { className: "empty-icon" }, "+"), h("h3", null, "添加第一台服务器"), h("p", null, "配置 SSH 登录信息后，看板会定时采集显存和算力占用。"), h("button", { className: "primary-action", type: "button", onClick: onAdd }, "添加服务器"));
+}
+
+function ServerDialog({ server, groups, onClose, onSave, onDelete }) {
+  const [form, setForm] = useState(() => ({
+    id: server?.id || "",
+    name: server?.name || "",
+    host: server?.host || "",
+    user: server?.user || "root",
+    port: server?.port || 22,
+    command: server?.command || "hy-smi",
+    group: server?.group || "",
+    tags: (server?.tags || []).join(", ")
+  }));
+  const editing = Boolean(server);
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  return h("div", { className: "dialog-backdrop", role: "presentation", onMouseDown: onClose },
+    h("form", {
+      className: "server-dialog",
+      onMouseDown: (event) => event.stopPropagation(),
+      onSubmit: (event) => {
+        event.preventDefault();
+        onSave({
+          name: form.name,
+          host: form.host,
+          user: form.user,
+          port: Number(form.port || 22),
+          command: form.command || "hy-smi",
+          group: form.group,
+          tags: form.tags
+        }, form.id);
+      }
+    },
+      h("div", { className: "dialog-head" }, h("div", null, h("p", { className: "eyebrow" }, "服务器配置"), h("h3", null, editing ? "编辑服务器" : "添加服务器")), h("button", { className: "icon-button", type: "button", onClick: onClose }, "×")),
+      h(Field, { label: "名称", value: form.name, onChange: (value) => set("name", value), required: true, placeholder: "例如：算法公共机 A" }),
+      h(Field, { label: "Host / IP", value: form.host, onChange: (value) => set("host", value), required: true, placeholder: "10.0.0.12" }),
+      h("div", { className: "field-row" },
+        h(Field, { label: "SSH 用户", value: form.user, onChange: (value) => set("user", value), placeholder: "root" }),
+        h(Field, { label: "端口", value: form.port, type: "number", onChange: (value) => set("port", value), min: 1, max: 65535 })
+      ),
+      h("label", null, h("span", null, "分组"), h("input", { value: form.group, list: "groupOptions", onChange: (event) => set("group", event.target.value), placeholder: "通信中兴组" }), h("datalist", { id: "groupOptions" }, groups.map((group) => h("option", { value: group, key: group })))),
+      h(Field, { label: "标签", value: form.tags, onChange: (value) => set("tags", value), placeholder: "公共池, 回归" }),
+      h("label", null, h("span", null, "采集命令"), h("select", { value: form.command, onChange: (event) => set("command", event.target.value) }, h("option", { value: "hy-smi" }, "hy-smi（海光 DCU）"), h("option", { value: "nvidia-smi" }, "nvidia-smi（NVIDIA GPU）"))),
+      h("div", { className: "dialog-actions" },
+        editing ? h("button", { className: "ghost-action", type: "button", onClick: () => onDelete(form.id) }, "删除") : h("span"),
+        h("button", { className: "primary-action", type: "submit" }, "保存")
+      )
+    )
+  );
+}
+
+function Field({ label, value, onChange, type, required, placeholder, min, max }) {
+  return h("label", null,
+    h("span", null, label),
+    h("input", { value, type: type || "text", required, placeholder, min, max, onChange: (event) => onChange(event.target.value) })
+  );
 }
 
 function mergeServerAssetDetails(nextServers, previousServers) {
@@ -178,10 +745,10 @@ function mergeServerAssetDetails(nextServers, previousServers) {
   return nextServers.map((server) => {
     const previous = previousById.get(server.id);
     if (!previous?.assets || !server.assets) return server;
-    const hadModelDetails = (previous.assets.modelItems || []).length > 0;
-    const hadDockerDetails = (previous.assets.dockerImages || []).length > 0;
     const hasModelDetails = (server.assets.modelItems || []).length > 0;
     const hasDockerDetails = (server.assets.dockerImages || []).length > 0;
+    const hadModelDetails = (previous.assets.modelItems || []).length > 0;
+    const hadDockerDetails = (previous.assets.dockerImages || []).length > 0;
     if ((!hadModelDetails || hasModelDetails) && (!hadDockerDetails || hasDockerDetails)) return server;
     return {
       ...server,
@@ -195,590 +762,56 @@ function mergeServerAssetDetails(nextServers, previousServers) {
   });
 }
 
-function setView(view) {
-  state.view = view;
-  document.querySelector("#dashboardViewBtn").classList.toggle("active", view === "dashboard");
-  document.querySelector("#assetViewBtn").classList.toggle("active", view === "assets");
-  document.querySelector("#changelogViewBtn").classList.toggle("active", view === "changelog");
-  els.search.placeholder = view === "assets" ? "搜索模型、路径、镜像 tag" : "搜索服务器、IP、模型、镜像";
-  els.searchScope.textContent = view === "assets" ? "模型搜索" : "资源搜索";
-  if (view === "assets") searchAssets();
-  if (view === "changelog") loadChangelog();
-  render();
-}
-
-async function loadChangelog() {
-  if (state.changelogLoading) return;
-  state.changelogLoading = true;
-  renderChangelog();
-  try {
-    const payload = await requestJson("/api/changelog");
-    state.changelogEntries = payload.entries || [];
-    state.changelogUpdatedAt = payload.updatedAt || null;
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    state.changelogLoading = false;
-    renderChangelog();
+function summarizeServers(servers) {
+  const totals = { servers: servers.length, cards: 0, busyCards: 0, freeCards: 0, freeServers: 0, busyServers: 0, offlineServers: 0 };
+  for (const server of servers) {
+    const status = server.status || {};
+    const kind = getServerKind(server);
+    totals.cards += status.totalCount || server.gpuCount || 0;
+    totals.busyCards += status.busyCount || 0;
+    totals.freeCards += status.freeCount || 0;
+    if (kind === "free") totals.freeServers += 1;
+    if (kind === "busy") totals.busyServers += 1;
+    if (kind === "offline") totals.offlineServers += 1;
   }
+  return totals;
 }
 
-async function loadSelectedAssets() {
-  if (!state.selectedId || state.assetDetailLoading) return;
-  state.assetDetailLoading = true;
-  try {
-    const payload = await requestJson(`/api/servers/${encodeURIComponent(state.selectedId)}/assets`);
-    const server = state.servers.find((item) => item.id === state.selectedId);
-    if (server && payload.assets) {
-      server.assets = payload.assets;
-      renderDetail();
-    }
-  } catch (error) {
-    console.warn(error);
-  } finally {
-    state.assetDetailLoading = false;
-  }
-}
-
-function queueAssetSearch() {
-  window.clearTimeout(state.assetSearchTimer);
-  state.assetSearchTimer = window.setTimeout(searchAssets, 220);
-  render();
-}
-
-async function searchAssets() {
-  if (state.view !== "assets") return;
-  const query = state.query.trim();
-  if (!query) {
-    state.assetResults = [];
-    state.assetTotalMatches = 0;
-    state.assetSearching = false;
-    renderAssetSearch();
-    return;
-  }
-  state.assetSearching = true;
-  renderAssetSearch();
-  try {
-    const params = new URLSearchParams({
-      q: query,
-      type: state.assetType,
-      state: state.assetState,
-      group: state.groupFilter
-    });
-    const payload = await requestJson(`/api/assets/search?${params.toString()}`);
-    state.assetResults = payload.results || [];
-    state.assetTotalMatches = payload.totalMatches || 0;
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    state.assetSearching = false;
-    renderAssetSearch();
-  }
-}
-
-function scheduleNextLoad() {
-  window.clearTimeout(state.timer);
-  state.timer = window.setTimeout(loadServers, state.pollIntervalMs);
-}
-
-async function manualRefresh() {
-  const button = document.querySelector("#refreshBtn");
-  button.disabled = true;
-  try {
-    await requestJson("/api/refresh", { method: "POST" });
-    await loadServers();
-    showToast("刷新完成");
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-async function refreshAssets() {
-  const button = document.querySelector("#assetRefreshBtn");
-  button.disabled = true;
-  try {
-    await requestJson("/api/assets/refresh", { method: "POST" });
-    await loadServers();
-    if (state.view === "assets") await searchAssets();
-    showToast("模型资产刷新完成");
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-function render() {
-  renderViewShell();
-  renderStats();
-  renderGroups();
-  renderGrid();
-  renderAssetSearch();
-  renderChangelog();
-  renderDetail();
-}
-
-function renderViewShell() {
-  const showingAssets = state.view === "assets";
-  const showingChangelog = state.view === "changelog";
-  document.body.dataset.view = state.view;
-  els.pageTitle.textContent = showingChangelog ? "更新日志" : (showingAssets ? "模型镜像检索" : "服务器占用情况");
-  els.searchScope.textContent = showingAssets ? "模型搜索" : "资源搜索";
-  els.stats.classList.toggle("hidden", showingAssets || showingChangelog);
-  els.groupFilters.classList.toggle("hidden", showingChangelog);
-  if (els.searchCluster) els.searchCluster.classList.toggle("hidden", showingChangelog);
-  els.grid.classList.toggle("hidden", showingAssets || showingChangelog || state.servers.length === 0);
-  els.empty.classList.toggle("hidden", showingAssets || showingChangelog || state.servers.length !== 0);
-  els.assetSearchPanel.classList.toggle("hidden", !showingAssets);
-  if (els.changelogPanel) els.changelogPanel.classList.toggle("hidden", !showingChangelog);
-  const assetButton = document.querySelector("#assetRefreshBtn");
-  if (assetButton) assetButton.classList.toggle("asset-context", showingAssets);
-}
-
-function renderGroups() {
-  const groups = groupSummaries();
-  if (!groups.some((group) => group.name === state.groupFilter)) {
-    state.groupFilter = "all";
-  }
-
-  if (els.groupFilters) {
-    els.groupFilters.innerHTML = [
-      groupButtonHtml("all", "全部分组", state.servers.length),
-      ...groups.map((group) => groupButtonHtml(group.name, group.name, group.count))
-    ].join("");
-    els.groupFilters.querySelectorAll(".group-filter").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.groupFilter = button.dataset.group;
-        if (state.view === "assets") searchAssets();
-        render();
-      });
-    });
-  }
-
-  if (els.groupOptions) {
-    const defaults = ["通信中兴组", "政府联想组", "企业浪潮组", "金融华三组", "深度组", "未分组"];
-    const names = [...new Set([...defaults, ...groups.map((group) => group.name)])];
-    els.groupOptions.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
-  }
-}
-
-function groupSummaries() {
+function groupSummaries(servers) {
   const byGroup = new Map();
-  for (const server of state.servers) {
+  for (const server of servers) {
     const group = serverGroup(server);
     byGroup.set(group, (byGroup.get(group) || 0) + 1);
   }
-  return [...byGroup.entries()]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+  return Array.from(byGroup.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
 }
 
-function groupButtonHtml(value, label, count) {
-  const active = state.groupFilter === value ? " active" : "";
-  return `
-    <button class="group-filter${active}" data-group="${escapeHtml(value)}" type="button">
-      <span>${escapeHtml(label)}</span><strong>${count}</strong>
-    </button>`;
-}
-
-function renderStats() {
-  const totals = state.servers.reduce(
-    (acc, server) => {
-      const status = server.status || {};
-      acc.cards += status.totalCount || server.gpuCount || 0;
-      acc.busyCards += status.busyCount || 0;
-      acc.freeCards += status.freeCount || 0;
-      if (getServerKind(server) === "free") acc.freeServers += 1;
-      if (getServerKind(server) === "busy") acc.busyServers += 1;
-      if (getServerKind(server) === "offline") acc.offlineServers += 1;
-      return acc;
-    },
-    { cards: 0, busyCards: 0, freeCards: 0, freeServers: 0, busyServers: 0, offlineServers: 0 }
-  );
-
-  setText("#statServers", state.servers.length);
-  setText("#statCards", totals.cards);
-  setText("#statFreeCards", totals.freeCards);
-  setText("#statBusyCards", totals.busyCards);
-  setText("#countAll", state.servers.length);
-  setText("#countFree", totals.freeServers);
-  setText("#countBusy", totals.busyServers);
-  setText("#countOffline", totals.offlineServers);
-  const assetButton = document.querySelector("#assetRefreshBtn");
-  if (assetButton) assetButton.disabled = state.assetRefreshing;
-}
-
-function renderGrid() {
-  const servers = filteredServers();
-  els.grid.innerHTML = "";
-  const hideServerList = state.view === "assets" || state.view === "changelog";
-  els.empty.classList.toggle("hidden", hideServerList || state.servers.length !== 0);
-  els.grid.classList.toggle("hidden", hideServerList || state.servers.length === 0);
-
-  for (const server of servers) {
-    const status = server.status || {};
-    const busyPercent = status.totalCount ? Math.round(((status.busyCount || 0) / status.totalCount) * 100) : 0;
-    const card = document.createElement("article");
-    card.className = `server-card ${serverOccupancyClass(server)} ${server.id === state.selectedId ? "selected" : ""}`;
-    card.tabIndex = 0;
-    card.innerHTML = serverCardHtml(server);
-    card.addEventListener("click", () => {
-      state.selectedId = server.id;
-      render();
-      loadSelectedAssets();
-    });
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        state.selectedId = server.id;
-        render();
-        loadSelectedAssets();
-      }
-    });
-    card.querySelector(".edit-card").addEventListener("click", (event) => {
-      event.stopPropagation();
-      openDialog(server);
-    });
-    card.style.setProperty("--busy", `${busyPercent}%`);
-    els.grid.appendChild(card);
-  }
-}
-
-function renderAssetSearch() {
-  if (!els.assetSearchPanel || state.view !== "assets") return;
-  const query = state.query.trim();
-  if (!query) {
-    els.assetSearchSummary.textContent = "输入模型名、路径或镜像名称开始查找。";
-    els.assetResultList.innerHTML = `
-      <div class="asset-search-empty">
-        <strong>可以搜索 Qwen、DeepSeek、vllm、镜像 tag 或完整路径</strong>
-        <span>结果会按服务器聚合，并显示这台机器当前卡占用情况。</span>
-      </div>`;
-    return;
-  }
-
-  if (state.assetSearching) {
-    els.assetSearchSummary.textContent = `正在查找“${query}”...`;
-    return;
-  }
-
-  els.assetSearchSummary.textContent = state.assetResults.length
-    ? `找到 ${state.assetTotalMatches} 条匹配，分布在 ${state.assetResults.length} 台服务器。`
-    : `没有找到“${query}”相关的模型或镜像。`;
-
-  els.assetResultList.innerHTML = state.assetResults.length
-    ? state.assetResults.map(assetResultGroupHtml).join("")
-    : `<div class="asset-search-empty"><strong>没有匹配结果</strong><span>可以先点“刷新模型资产”，等待盘点完成后再搜，或换一个模型名 / 镜像 tag。</span></div>`;
-
-  els.assetResultList.querySelectorAll("[data-copy]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      copyText(button.dataset.copy, button.dataset.copyLabel || "内容");
-    });
+function matchesDashboardQuery(server, query) {
+  const terms = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const fields = [server.name, server.host, server.user, serverGroup(server), modelSummary(server), ...(server.tags || [])].map((value) => String(value || "").toLowerCase());
+  const text = fields.join(" ");
+  const tokens = fields.flatMap((field) => field.match(/[a-z0-9]+/g) || []);
+  return terms.every((term) => {
+    if (term.includes(".") || /[\u4e00-\u9fff]/.test(term)) return text.includes(term);
+    if (/^[a-z0-9]+$/.test(term)) return tokens.some((token) => token === term || (term.length <= 4 && token.startsWith(term)));
+    return text.includes(term);
   });
 }
 
-function renderChangelog() {
-  if (!els.changelogPanel || state.view !== "changelog") return;
-  if (els.changelogUpdatedAt) {
-    els.changelogUpdatedAt.textContent = state.changelogUpdatedAt ? `同步 ${formatTime(state.changelogUpdatedAt)}` : "读取中";
-  }
-  if (!els.changelogList) return;
-
-  if (state.changelogLoading && !state.changelogEntries.length) {
-    els.changelogList.innerHTML = `<div class="changelog-empty">正在读取更新日志...</div>`;
-    return;
-  }
-
-  if (!state.changelogEntries.length) {
-    els.changelogList.innerHTML = `<div class="changelog-empty">暂无更新记录</div>`;
-    return;
-  }
-
-  els.changelogList.innerHTML = state.changelogEntries.map(changelogEntryHtml).join("");
-}
-
-function changelogEntryHtml(entry) {
-  const items = entry.items || [];
-  return `
-    <article class="changelog-entry">
-      <div class="changelog-date">${escapeHtml(entry.title || "")}</div>
-      <ul>
-        ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-      </ul>
-    </article>`;
-}
-
-function assetResultGroupHtml(group) {
-  const server = group.server || {};
-  const stateClass = `status-${server.state || "pending"}`;
-  const sshCommand = `ssh ${server.user || "root"}@${server.host}`;
-  return `
-    <article class="asset-result-card">
-      <div class="asset-result-head">
-        <div>
-          <div class="asset-server-title">${escapeHtml(server.name || server.host)}</div>
-          <div class="asset-server-meta">
-            <span>${escapeHtml(server.group || "未分组")}</span>
-            <span>${escapeHtml(server.host)}:${escapeHtml(server.port || 22)}</span>
-            <span>${escapeHtml(server.summary || "-")}</span>
-          </div>
-        </div>
-        <span class="status-pill ${stateClass}">${kindLabel(server.state)}</span>
-      </div>
-      <div class="asset-copy-row">
-        <button class="mini-copy" data-copy="${escapeAttr(server.host || "")}" data-copy-label="IP" type="button">复制 IP</button>
-        <button class="mini-copy" data-copy="${escapeAttr(sshCommand)}" data-copy-label="SSH 命令" type="button">复制 SSH</button>
-      </div>
-      <div class="asset-match-list">
-        ${(group.matches || []).map(assetMatchHtml).join("")}
-      </div>
-    </article>`;
-}
-
-function assetMatchHtml(match) {
-  const label = match.type === "docker" ? "镜像" : "模型";
-  return `
-    <div class="asset-match ${match.type}">
-      <span class="asset-kind">${label}</span>
-      <div class="asset-match-main">
-        <strong>${highlightMatch(match.label || "-")}</strong>
-        <span>${highlightMatch(match.value || "-")}</span>
-        <em>${escapeHtml(match.meta || "")}</em>
-      </div>
-      <button class="mini-copy" data-copy="${escapeAttr(match.copyText || match.value || "")}" data-copy-label="${label}" type="button">复制</button>
-    </div>`;
-}
-
-function serverCardHtml(server) {
-  const status = server.status || {};
-  const assets = server.assets || {};
-  const kind = getServerKind(server);
-  const serverLevel = serverOccupancyClass(server);
-  const totalCount = status.totalCount || server.gpuCount || 0;
-  const tags = [...new Set([serverGroup(server), ...(server.tags?.length ? server.tags : [totalCount ? `${totalCount}卡` : "自动识别"])])];
-  return `
-    <div class="card-head">
-      <div>
-        <div class="server-name">${escapeHtml(server.name)}</div>
-        <div class="server-host">${escapeHtml(server.user ? `${server.user}@${server.host}` : server.host)}:${server.port}</div>
-        <div class="server-model">${escapeHtml(modelSummary(server))}</div>
-      </div>
-      <span class="status-pill status-${kind} ${serverLevel}">${kindLabel(kind)}</span>
-    </div>
-    <div class="gpu-ring">
-      <div class="donut ${serverLevel}"><span>${totalCount ? `${status.busyCount || 0}/${totalCount}` : "识别中"}</span></div>
-      <div class="summary">
-        <strong>${escapeHtml(status.summary || "等待刷新")}</strong>
-        <span>${status.updatedAt ? formatTime(status.updatedAt) : "未采集"}</span>
-      </div>
-    </div>
-    <div class="gpu-grid">
-      ${gpuChips(status.gpus || [], totalCount, kind)}
-    </div>
-    <div class="asset-summary ${assets.state === "failed" ? "failed" : ""}">
-      <span>模型 ${assets.modelCount || 0}</span>
-      <span>镜像 ${assets.dockerCount || 0}</span>
-      <em>${assetUpdatedText(assets)}</em>
-    </div>
-    <div class="tag-list">
-      ${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
-      <button class="icon-button edit-card" type="button" aria-label="编辑服务器">✎</button>
-    </div>
-  `;
-}
-
-function gpuChips(gpus, count, serverKind) {
-  const list = gpus.length ? gpus : Array.from({ length: count }, (_, index) => ({ index, state: "unknown" }));
-  return list
-    .slice(0, count)
-    .map((gpu) => {
-      const cls = serverKind === "offline" ? "offline" : gpu.state || "unknown";
-      const chipLevel = gpuOccupancyClass(gpu);
-      const compute = formatPercent(gpu.utilization);
-      const vram = formatPercent(gpu.memoryUtilization);
-      const computeLevel = normalizePercent(gpu.utilization);
-      const vramLevel = normalizePercent(gpu.memoryUtilization);
-      const computeClass = occupancyClass(gpu.utilization);
-      const vramClass = occupancyClass(gpu.memoryUtilization);
-      return `
-        <span class="gpu-chip ${cls} ${chipLevel}">
-          <b>#${escapeHtml(gpu.index)}</b>
-          <span class="chip-metrics">
-            <span class="chip-block memory ${vramClass}" style="--level:${vramLevel}%">
-              <i></i>
-              <em>显存</em>
-              <strong>${escapeHtml(vram)}</strong>
-            </span>
-            <span class="chip-block compute ${computeClass}" style="--level:${computeLevel}%">
-              <i></i>
-              <em>算力</em>
-              <strong>${escapeHtml(compute)}</strong>
-            </span>
-          </span>
-        </span>`;
-    })
-    .join("");
-}
-
-function renderDetail() {
-  const scrollState = captureDetailScroll();
-  const server = state.servers.find((item) => item.id === state.selectedId);
-  if (!server) {
-    delete els.detail.dataset.serverId;
-    els.detail.innerHTML = `
-      <div class="detail-empty">
-        <div class="detail-pulse"></div>
-        <h3>选择一台服务器</h3>
-        <p>查看每张 GPU/DCU 卡的占用、显存、温度和连接状态。</p>
-      </div>`;
-    return;
-  }
-
-  const status = server.status || {};
-  const assets = server.assets || {};
-  const kind = getServerKind(server);
-  const totalCount = status.totalCount || server.gpuCount || 0;
-  els.detail.dataset.serverId = server.id;
-  els.detail.innerHTML = `
-    <div class="detail-head">
-      <div>
-        <p class="eyebrow">${totalCount ? `${escapeHtml(totalCount)}卡服务器` : "自动识别卡数"} · ${commandLabel(server.command)}</p>
-        <h3>${escapeHtml(server.name)}</h3>
-      </div>
-      <button class="icon-button" id="detailEditBtn" type="button" aria-label="编辑服务器">✎</button>
-    </div>
-    <div class="detail-meta">
-      <div class="meta-box"><span>状态</span><strong>${kindLabel(kind)}</strong></div>
-      <div class="meta-box"><span>占用</span><strong>${totalCount ? `${status.busyCount || 0}/${totalCount}` : "识别中"}</strong></div>
-      <div class="meta-box"><span>分组</span><strong>${escapeHtml(serverGroup(server))}</strong></div>
-      <div class="meta-box"><span>地址</span><strong>${escapeHtml(server.host)}:${server.port}</strong></div>
-      <div class="meta-box"><span>型号</span><strong>${escapeHtml(modelSummary(server))}</strong></div>
-      <div class="meta-box"><span>延迟</span><strong>${status.latencyMs ? `${status.latencyMs}ms` : "-"}</strong></div>
-    </div>
-    ${status.error ? `<div class="meta-box"><span>错误</span><strong>${escapeHtml(status.error)}</strong></div>` : ""}
-    <div class="gpu-list">
-      ${(status.gpus || []).map(gpuRowHtml).join("")}
-    </div>
-    ${assetPanelHtml(assets)}
-  `;
-  document.querySelector("#detailEditBtn").addEventListener("click", () => openDialog(server));
-  restoreDetailScroll(scrollState, server.id);
-}
-
-function captureDetailScroll() {
-  return {
-    serverId: els.detail?.dataset?.serverId || null,
-    detailTop: els.detail ? els.detail.scrollTop : 0,
-    modelTop: document.querySelector(".model-asset-list")?.scrollTop || 0,
-    dockerTop: document.querySelector(".docker-asset-list")?.scrollTop || 0
-  };
-}
-
-function restoreDetailScroll(scrollState, serverId) {
-  if (!scrollState || scrollState.serverId !== serverId) return;
-  window.requestAnimationFrame(() => {
-    if (els.detail?.dataset?.serverId !== serverId) return;
-    if (els.detail) els.detail.scrollTop = scrollState.detailTop || 0;
-    const modelList = document.querySelector(".model-asset-list");
-    const dockerList = document.querySelector(".docker-asset-list");
-    if (modelList) modelList.scrollTop = scrollState.modelTop || 0;
-    if (dockerList) dockerList.scrollTop = scrollState.dockerTop || 0;
-  });
-}
-
-function assetPanelHtml(assets) {
-  const modelItems = assets.modelItems || [];
-  const dockerImages = assets.dockerImages || [];
-  const modelList = modelItems.length
-    ? modelItems.slice(0, 80).map(modelItemHtml).join("")
-    : assets.modelCount
-      ? `<div class="asset-empty">正在加载模型详情</div>`
-    : `<div class="asset-empty">未发现模型目录或文件</div>`;
-  const dockerList = dockerImages.length
-    ? dockerImages.slice(0, 80).map(dockerImageHtml).join("")
-    : assets.dockerCount
-      ? `<div class="asset-empty">正在加载镜像详情</div>`
-    : `<div class="asset-empty">未发现 Docker 镜像</div>`;
-
-  return `
-    <section class="asset-panel">
-      <div class="asset-head">
-        <div>
-          <p class="eyebrow">模型资产</p>
-          <h3>模型路径与镜像</h3>
-        </div>
-        <span>${assetUpdatedText(assets)}</span>
-      </div>
-      ${assets.error ? `<div class="asset-error">${escapeHtml(assets.error)}</div>` : ""}
-      <div class="asset-columns">
-        <div class="asset-column">
-          <div class="asset-title"><strong>挂载目录模型</strong><span>${modelItems.length}</span></div>
-          <div class="asset-list model-asset-list">${modelList}</div>
-        </div>
-        <div class="asset-column">
-          <div class="asset-title"><strong>Docker Images</strong><span>${dockerImages.length}</span></div>
-          <div class="asset-list docker-asset-list">${dockerList}</div>
-        </div>
-      </div>
-    </section>`;
-}
-
-function modelItemHtml(item) {
-  const fileCount = item.files?.length || 0;
-  return `
-    <div class="asset-item">
-      <strong>${escapeHtml(item.name || "-")}</strong>
-      <span>${escapeHtml(item.path || "-")}</span>
-      <em>${escapeHtml(item.root || "-")} · 目录${fileCount ? ` · ${fileCount} 个文件可搜索` : ""}</em>
-    </div>`;
-}
-
-function dockerImageHtml(image) {
-  return `
-    <div class="asset-item">
-      <strong>${escapeHtml(image.repository || "-")}:${escapeHtml(image.tag || "-")}</strong>
-      <span>${escapeHtml(image.imageId || "-")} · ${escapeHtml(image.size || "-")}</span>
-      <em>${escapeHtml(image.created || "-")}</em>
-    </div>`;
-}
-
-function gpuRowHtml(gpu) {
-  const utilization = normalizePercent(gpu.utilization);
-  const memoryUtilization = normalizePercent(gpu.memoryUtilization);
-  const utilizationClass = occupancyClass(gpu.utilization);
-  const memoryUtilizationClass = occupancyClass(gpu.memoryUtilization);
-  const memory = gpu.memoryTotalMiB
-    ? `${gpu.memoryUsedMiB || 0}/${gpu.memoryTotalMiB} MiB`
-    : gpu.memoryUtilization !== null && gpu.memoryUtilization !== undefined
-      ? `${gpu.memoryUtilization}%`
-      : "-";
-  return `
-    <div class="gpu-row">
-      <div class="gpu-row-head">
-        <strong>卡 #${gpu.index}${gpu.model ? ` · ${escapeHtml(gpu.model)}` : ""}</strong>
-        <span>${gpuStateLabel(gpu.state)}</span>
-      </div>
-      <div class="bar-stack">
-        <div class="metric-line">
-          <span>显存</span>
-          <div class="bar memory"><i class="${memoryUtilizationClass}" style="width:${memoryUtilization}%"></i></div>
-          <strong>${formatPercent(gpu.memoryUtilization)}</strong>
-        </div>
-        <div class="metric-line">
-          <span>算力</span>
-          <div class="bar compute"><i class="${utilizationClass}" style="width:${utilization}%"></i></div>
-          <strong>${formatPercent(gpu.utilization)}</strong>
-        </div>
-      </div>
-      <div class="gpu-metrics">
-        <span>显存 ${escapeHtml(memory)}</span>
-        <span>温度 ${gpu.temperatureC ?? "-"}℃</span>
-        <span>功耗 ${gpu.powerW ?? "-"}W</span>
-      </div>
-    </div>`;
+function splitHighlight(value, query) {
+  const text = String(value ?? "");
+  const firstTerm = String(query || "").trim().split(/\s+/).filter(Boolean)[0];
+  if (!firstTerm) return [{ text, hit: false }];
+  const lower = text.toLowerCase();
+  const term = firstTerm.toLowerCase();
+  const index = lower.indexOf(term);
+  if (index < 0) return [{ text, hit: false }];
+  return [
+    { text: text.slice(0, index), hit: false },
+    { text: text.slice(index, index + firstTerm.length), hit: true },
+    { text: text.slice(index + firstTerm.length), hit: false }
+  ].filter((part) => part.text);
 }
 
 function normalizePercent(value) {
@@ -809,55 +842,9 @@ function gpuOccupancyClass(gpu) {
 function serverOccupancyClass(server) {
   const gpus = server.status?.gpus || [];
   if (!gpus.length) return "level-free";
-  const max = gpus.reduce((value, gpu) => Math.max(value, normalizePercent(gpu.memoryUtilization), normalizePercent(gpu.utilization)), 0);
+  let max = 0;
+  for (const gpu of gpus) max = Math.max(max, normalizePercent(gpu.memoryUtilization), normalizePercent(gpu.utilization));
   return occupancyClass(max);
-}
-
-function filteredServers() {
-  return state.servers.filter((server) => {
-    const kind = getServerKind(server);
-    const matchesFilter = state.filter === "all" || state.filter === kind;
-    const matchesGroup = state.groupFilter === "all" || serverGroup(server) === state.groupFilter;
-    return matchesFilter && matchesGroup && matchesDashboardQuery(server, state.query);
-  });
-}
-
-function matchesDashboardQuery(server, query) {
-  const terms = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (!terms.length) return true;
-  const fields = [
-    server.name,
-    server.host,
-    server.user,
-    serverGroup(server),
-    modelSummary(server),
-    ...(server.tags || [])
-  ].map((value) => String(value || "").toLowerCase());
-  const text = fields.join(" ");
-  const tokens = fields.flatMap((field) => field.match(/[a-z0-9]+/g) || []);
-
-  return terms.every((term) => {
-    if (term.includes(".") || /[\u4e00-\u9fff]/.test(term)) {
-      return text.includes(term);
-    }
-    if (/^[a-z0-9]+$/.test(term)) {
-      return tokens.some((token) => token === term || (term.length <= 4 && token.startsWith(term)));
-    }
-    return text.includes(term);
-  });
-}
-
-function assetSearchText(server) {
-  const assets = server.assets || {};
-  if (assets.searchText) return assets.searchText;
-  const modelText = (assets.modelItems || []).flatMap((item) => [
-    item.name,
-    item.path,
-    item.root,
-    ...(item.files || []).flatMap((file) => [file.name, file.path])
-  ]);
-  const dockerText = (assets.dockerImages || []).flatMap((image) => [image.repository, image.tag, image.imageId]);
-  return [...modelText, ...dockerText].filter(Boolean).join(" ");
 }
 
 function assetUpdatedText(assets) {
@@ -890,113 +877,21 @@ function commandLabel(command) {
 }
 
 function modelSummary(server) {
-  const models = server.status?.models?.length
-    ? server.status.models
-    : (server.status?.gpus || []).map((gpu) => gpu.model).filter(Boolean);
+  const models = server.status?.models?.length ? server.status.models : (server.status?.gpus || []).map((gpu) => gpu.model).filter(Boolean);
   const unique = [...new Set(models)];
   if (!unique.length) return "型号识别中";
   return unique.length === 1 ? unique[0] : unique.join(" / ");
 }
 
-function openDialog(server) {
-  const editing = Boolean(server);
-  els.dialogTitle.textContent = editing ? "编辑服务器" : "添加服务器";
-  els.deleteBtn.classList.toggle("hidden", !editing);
-  els.fields.id.value = server?.id || "";
-  els.fields.name.value = server?.name || "";
-  els.fields.host.value = server?.host || "";
-  els.fields.user.value = server?.user || "root";
-  els.fields.port.value = server?.port || 22;
-  els.fields.command.value = server?.command || "hy-smi";
-  els.fields.group.value = server?.group || "";
-  els.fields.tags.value = (server?.tags || []).join(", ");
-  els.dialog.showModal();
-  els.fields.name.focus();
-}
-
-async function saveServer(event) {
-  event.preventDefault();
-  const id = els.fields.id.value;
-  const body = {
-    name: els.fields.name.value,
-    host: els.fields.host.value,
-    user: els.fields.user.value,
-    port: Number(els.fields.port.value || 22),
-    command: els.fields.command.value || "hy-smi",
-    group: els.fields.group.value,
-    tags: els.fields.tags.value
-  };
-
-  try {
-    const payload = await requestJson(id ? `/api/servers/${encodeURIComponent(id)}` : "/api/servers", {
-      method: id ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    state.selectedId = payload.server.id;
-    els.dialog.close();
-    await loadServers();
-    showToast("已保存");
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
-async function deleteSelectedServer() {
-  const id = els.fields.id.value;
-  if (!id) return;
-  try {
-    await requestJson(`/api/servers/${encodeURIComponent(id)}`, { method: "DELETE" });
-    state.selectedId = null;
-    els.dialog.close();
-    await loadServers();
-    showToast("已删除");
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
 async function requestJson(url, options) {
   const response = await fetch(url, options);
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || `请求失败 ${response.status}`);
-  }
+  if (!response.ok) throw new Error(payload.error || `请求失败 ${response.status}`);
   return payload;
-}
-
-function showToast(message) {
-  els.toast.textContent = message;
-  els.toast.classList.remove("hidden");
-  window.clearTimeout(els.toastTimer);
-  els.toastTimer = window.setTimeout(() => els.toast.classList.add("hidden"), 2600);
-}
-
-function setText(selector, value) {
-  document.querySelector(selector).textContent = value;
 }
 
 function formatTime(value) {
   return new Date(value).toLocaleTimeString("zh-CN", { hour12: false });
-}
-
-async function copyText(text, label) {
-  if (!text) return;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      fallbackCopyText(text);
-    }
-    showToast(`${label}已复制`);
-  } catch (error) {
-    try {
-      fallbackCopyText(text);
-      showToast(`${label}已复制`);
-    } catch {
-      showToast("复制失败");
-    }
-  }
 }
 
 function fallbackCopyText(text) {
@@ -1011,25 +906,4 @@ function fallbackCopyText(text) {
   document.body.removeChild(input);
 }
 
-function highlightMatch(value) {
-  const text = escapeHtml(value);
-  const query = state.query.trim();
-  if (!query) return text;
-  const firstTerm = query.split(/\s+/).filter(Boolean)[0];
-  if (!firstTerm) return text;
-  const escapedTerm = firstTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return text.replace(new RegExp(`(${escapedTerm})`, "ig"), "<mark>$1</mark>");
-}
-
-function escapeAttr(value) {
-  return escapeHtml(value);
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+ReactDOM.createRoot(document.querySelector("#root")).render(h(App));
