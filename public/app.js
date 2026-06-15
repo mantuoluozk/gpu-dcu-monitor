@@ -323,6 +323,7 @@ function render() {
 function renderViewShell() {
   const showingAssets = state.view === "assets";
   const showingChangelog = state.view === "changelog";
+  document.body.dataset.view = state.view;
   els.pageTitle.textContent = showingChangelog ? "更新日志" : (showingAssets ? "模型镜像检索" : "服务器占用情况");
   els.searchScope.textContent = showingAssets ? "模型搜索" : "资源搜索";
   els.stats.classList.toggle("hidden", showingAssets || showingChangelog);
@@ -332,6 +333,8 @@ function renderViewShell() {
   els.empty.classList.toggle("hidden", showingAssets || showingChangelog || state.servers.length !== 0);
   els.assetSearchPanel.classList.toggle("hidden", !showingAssets);
   if (els.changelogPanel) els.changelogPanel.classList.toggle("hidden", !showingChangelog);
+  const assetButton = document.querySelector("#assetRefreshBtn");
+  if (assetButton) assetButton.classList.toggle("asset-context", showingAssets);
 }
 
 function renderGroups() {

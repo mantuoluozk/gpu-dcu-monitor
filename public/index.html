@@ -34,16 +34,9 @@
           </button>
         </div>
 
-        <div class="sidebar-actions">
-          <button class="primary-action" id="addServerBtn" type="button">
-            <span aria-hidden="true">＋</span>添加服务器
-          </button>
-          <button class="ghost-action" id="refreshBtn" type="button">
-            <span aria-hidden="true">↻</span>手动刷新
-          </button>
-          <button class="ghost-action" id="assetRefreshBtn" type="button">
-            <span aria-hidden="true">▦</span>刷新模型资产
-          </button>
+        <div class="sidebar-note">
+          <span>资源池筛选</span>
+          <strong>按状态和分组快速定位可用机器</strong>
         </div>
       </aside>
 
@@ -52,6 +45,17 @@
           <div>
             <p class="eyebrow" id="siteEyebrow">共享测试资源</p>
             <h2 id="pageTitle">服务器占用情况</h2>
+          </div>
+          <div class="top-actions">
+            <button class="ghost-action compact" id="refreshBtn" type="button">
+              <span aria-hidden="true">↻</span>刷新状态
+            </button>
+            <button class="ghost-action compact" id="assetRefreshBtn" type="button">
+              <span aria-hidden="true">▦</span>刷新模型资产
+            </button>
+            <button class="primary-action compact" id="addServerBtn" type="button">
+              <span aria-hidden="true">＋</span>添加服务器
+            </button>
           </div>
         </section>
 
