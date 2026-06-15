@@ -509,8 +509,6 @@ h1 {
   background: linear-gradient(180deg, #fff, #f9fafb);
   padding: 9px 10px;
   transition: box-shadow 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
-  content-visibility: auto;
-  contain-intrinsic-size: 218px;
 }
 
 .server-card::before {
@@ -749,21 +747,29 @@ code {
 
 .tag-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   align-items: center;
   min-width: 0;
   max-width: 100%;
   margin-top: auto;
   padding-top: 7px;
+  overflow: hidden;
 }
 
 .tag {
   flex: 0 1 auto;
-  max-width: 100%;
+  max-width: 92px;
   background: #edf3f5;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
+}
+
+.tag-more {
+  flex: 0 0 auto;
+  background: var(--accent-soft);
 }
 
 .icon-button {

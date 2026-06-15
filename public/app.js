@@ -421,6 +421,8 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
   const totalCount = status.totalCount || server.gpuCount || 0;
   const busyPercent = totalCount ? Math.round(((status.busyCount || 0) / totalCount) * 100) : 0;
   const tags = [...new Set([serverGroup(server), ...(server.tags?.length ? server.tags : [totalCount ? `${totalCount}卡` : "自动识别"])])];
+  const visibleTags = tags.slice(0, 3);
+  const hiddenTagCount = Math.max(0, tags.length - visibleTags.length);
 
   return h("article", {
     className: `server-card ${serverOccupancyClass(server)}${selected ? " selected" : ""}`,
@@ -456,7 +458,8 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       h("em", null, assetUpdatedText(assets))
     ),
     h("div", { className: "tag-list" },
-      tags.map((tag) => h("span", { className: "tag", key: tag }, tag)),
+      visibleTags.map((tag) => h("span", { className: "tag", key: tag, title: tag }, tag)),
+      hiddenTagCount ? h("span", { className: "tag tag-more", title: tags.slice(visibleTags.length).join(" / ") }, `+${hiddenTagCount}`) : null,
       h("button", {
         className: "icon-button edit-card",
         type: "button",
