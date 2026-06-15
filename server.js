@@ -42,7 +42,7 @@ const DEFAULT_ASSET_PATHS = [
   "/Ring-2.5-1T"
 ];
 const ASSET_PATHS = parseCsv(process.env.ASSET_PATHS || DEFAULT_ASSET_PATHS.join(","));
-const ASSET_SCAN_MAX_DEPTH = clampInt(process.env.ASSET_SCAN_MAX_DEPTH, 1, 14, 12);
+const ASSET_SCAN_MAX_DEPTH = clampInt(process.env.ASSET_SCAN_MAX_DEPTH, 1, 14, 6);
 const ASSET_PATH_TIMEOUT_MS = Number(process.env.ASSET_PATH_TIMEOUT_MS || 20000);
 const ASSET_REFRESH_HOUR = clampInt(process.env.ASSET_REFRESH_HOUR, 0, 23, 2);
 const ASSET_REFRESH_MINUTE = clampInt(process.env.ASSET_REFRESH_MINUTE, 0, 59, 0);

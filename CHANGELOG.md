@@ -1,5 +1,9 @@
 # 更新记录
 
+## 2026-06-15
+
+- 将模型资产默认扫描深度从 12 层调整为 6 层，减少对深目录和慢挂载盘的无效扫描压力；仍可通过 `ASSET_SCAN_MAX_DEPTH` 按部署环境单独调大。
+
 ## 2026-06-12
 
 - 补充 Windows 本地调试说明：PowerShell 可能因执行策略拦截 `npm.ps1`，建议使用 `cmd.exe /c npm.cmd start`、`start-windows.bat` 或直接 `node server.js` 启动。
