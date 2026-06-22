@@ -2,7 +2,7 @@
 
 一个通过 SSH 采集服务器 GPU/DCU 占用情况的 Web 看板。适合集中查看多台服务器的加速卡状态，支持海光 DCU 和 NVIDIA GPU。
 
-看板会定时在目标服务器上执行 `hy-smi` 或 `nvidia-smi`，展示每台服务器的卡数、型号、显存占用、算力占用、温度、功耗、在线状态和分组信息。
+看板会定时在目标服务器上执行 `hy-smi` 或 `nvidia-smi`，并同步采集轻量系统信息，展示每台服务器的卡数、型号、显存占用、算力占用、温度、功耗、CPU/内存状态、系统版本、驱动版本、在线状态和分组信息。
 
 ## 界面预览
 
@@ -23,6 +23,8 @@
 - 自动识别卡数，不需要手动填写 4 卡或 8 卡。
 - 同时显示显存占用和算力占用。
 - 根据显存占用和算力占用综合判断每张卡是否可用。
+- 同步展示 CPU 利用率、CPU 型号、核心数、内存使用率、负载、运行时间、系统版本、内核架构和 GPU/DCU 驱动版本。
+- CPU 温度和 CPU 功耗按目标机器能力 best-effort 采集；如果 `sensors`、`/sys/class/thermal` 或 `powercap` 不可用，对应字段会显示为空，不影响 GPU/DCU 状态刷新。
 - 主界面用水位色块展示每张卡的显存和算力占用。
 - 支持手动刷新模型资产，也会每天 02:00 自动盘点每台服务器常见模型目录下的模型文件/目录，并展示 Docker images。
 - 提供“模型镜像检索”视图，按模型名、路径、Docker 镜像名或 tag 查找资产所在服务器。
@@ -169,6 +171,7 @@ ssh root@10.0.0.13 nvidia-smi
    Environment=PORT=3066
    Environment=POLL_INTERVAL_MS=10000
    Environment=SSH_TIMEOUT_MS=20000
+   Environment=SYSTEM_SSH_TIMEOUT_MS=12000
    Environment=ASSET_REFRESH_HOUR=2
    Environment=ASSET_REFRESH_MINUTE=0
    ExecStart=/usr/bin/node /opt/gpu-dcu-monitor/server.js
@@ -264,6 +267,7 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `PORT`：网页端口，默认 `3066`。
 - `POLL_INTERVAL_MS`：自动采集间隔，默认 `10000` 毫秒。
 - `SSH_TIMEOUT_MS`：单台服务器 SSH/采集命令超时，默认 `20000` 毫秒。部分 NVIDIA 机器执行 `nvidia-smi` 较慢时可以继续调大。
+- `SYSTEM_SSH_TIMEOUT_MS`：CPU/系统信息探针 SSH 超时，默认不超过 `12000` 毫秒。系统探针失败只会让系统信息为空，不会把服务器判定为离线。
 - `REFRESH_CONCURRENCY`：GPU/DCU 状态采集并发数，默认 `8`。
 - `ASSET_REFRESH_HOUR`：模型资产和 Docker 镜像自动盘点小时，默认 `2`。
 - `ASSET_REFRESH_MINUTE`：模型资产和 Docker 镜像自动盘点分钟，默认 `0`。

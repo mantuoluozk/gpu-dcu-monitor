@@ -393,6 +393,7 @@ function StatTile({ label, value, tone }) {
 
 const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit }) {
   const status = server.status || {};
+  const system = status.system || {};
   const assets = server.assets || {};
   const kind = getServerKind(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
@@ -435,6 +436,11 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
         h("span", null, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
       )
     ),
+    h("div", { className: "system-summary" },
+      h("span", null, `CPU ${formatPercent(system.cpuUtilization)}`),
+      h("span", null, `内存 ${formatPercent(system.memoryUtilization)}`),
+      h("span", null, `温度 ${formatTemperature(system.cpuTemperatureC)}`)
+    ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
     h("div", { className: "model-line" }, modelSummary(server)),
     h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
@@ -466,6 +472,7 @@ function DetailOverlay({ server, openDialog, copy, onClose }) {
   }
 
   const status = server.status || {};
+  const system = status.system || {};
   const assets = server.assets || {};
   const kind = getServerKind(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
@@ -486,9 +493,12 @@ function DetailOverlay({ server, openDialog, copy, onClose }) {
       h(MetaBox, { label: "状态", value: kindLabel(kind), tone: kind }),
       h(MetaBox, { label: "占用", value: totalCount ? `${status.busyCount || 0}/${totalCount}` : "识别中" }),
       h(MetaBox, { label: "分组", value: serverGroup(server) }),
-      h(MetaBox, { label: "延迟", value: status.latencyMs ? `${status.latencyMs}ms` : "-" })
+      h(MetaBox, { label: "延迟", value: status.latencyMs ? `${status.latencyMs}ms` : "-" }),
+      h(MetaBox, { label: "CPU", value: formatPercent(system.cpuUtilization), tone: occupancyClass(system.cpuUtilization) }),
+      h(MetaBox, { label: "内存", value: formatPercent(system.memoryUtilization), tone: occupancyClass(system.memoryUtilization) })
     ),
     status.error ? h("div", { className: "asset-error" }, status.error) : null,
+    h(SystemPanel, { system }),
     h("div", { className: "gpu-list" }, (status.gpus || []).map((gpu) => h(GpuRow, { gpu, key: gpu.index }))),
     h(AssetPanel, { assets, copy })
     )
@@ -497,6 +507,32 @@ function DetailOverlay({ server, openDialog, copy, onClose }) {
 
 function MetaBox({ label, value, tone }) {
   return h("div", { className: `meta-box ${tone || ""}` }, h("span", null, label), h("strong", null, value));
+}
+
+function SystemPanel({ system }) {
+  const rows = [
+    ["CPU型号", system.cpuModel || "-"],
+    ["CPU核心", system.cpuCores ? `${system.cpuCores} 核` : "-"],
+    ["CPU温度", formatTemperature(system.cpuTemperatureC)],
+    ["CPU功耗", formatPower(system.cpuPowerW)],
+    ["内存", formatMemory(system.memoryUsedMiB, system.memoryTotalMiB)],
+    ["负载", system.loadAverage || "-"],
+    ["系统", system.osName || "-"],
+    ["内核", [system.kernel, system.arch].filter(Boolean).join(" / ") || "-"],
+    ["驱动", system.driverVersion || "-"],
+    ["运行时间", formatDuration(system.uptimeSeconds)]
+  ];
+  return h("section", { className: "system-panel" },
+    h("div", { className: "asset-head" },
+      h("div", null, h("p", { className: "eyebrow" }, "System"), h("h3", null, "CPU 与系统信息")),
+      system.error ? h("span", null, "系统探针失败") : null
+    ),
+    system.error ? h("div", { className: "asset-error" }, system.error) : null,
+    h("div", { className: "system-grid" }, rows.map(([label, value]) => h("div", { className: "system-cell", key: label },
+      h("span", null, label),
+      h("strong", null, value)
+    )))
+  );
 }
 
 function GpuRow({ gpu }) {
@@ -798,6 +834,44 @@ function formatPercent(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return `${Number.isInteger(number) ? number : number.toFixed(1)}%`;
+}
+
+function formatTemperature(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${Number.isInteger(number) ? number : number.toFixed(1)}℃`;
+}
+
+function formatPower(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${Number.isInteger(number) ? number : number.toFixed(1)}W`;
+}
+
+function formatMemory(usedMiB, totalMiB) {
+  const used = Number(usedMiB);
+  const total = Number(totalMiB);
+  if (!Number.isFinite(total) || total <= 0) return "-";
+  return `${formatGiB(used)}/${formatGiB(total)}`;
+}
+
+function formatGiB(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  const gib = number / 1024;
+  return `${gib >= 10 ? Math.round(gib) : gib.toFixed(1)} GiB`;
+}
+
+function formatDuration(seconds) {
+  const total = Number(seconds);
+  if (!Number.isFinite(total) || total <= 0) return "-";
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  if (days > 0) return `${days}天 ${hours}小时`;
+  if (hours > 0) return `${hours}小时`;
+  return `${Math.max(1, Math.floor(total / 60))}分钟`;
 }
 
 function occupancyClass(value) {

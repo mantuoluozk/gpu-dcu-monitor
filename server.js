@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const PORT = Number(process.env.PORT || 3066);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
 const SSH_TIMEOUT_MS = Number(process.env.SSH_TIMEOUT_MS || 20000);
+const SYSTEM_SSH_TIMEOUT_MS = Number(process.env.SYSTEM_SSH_TIMEOUT_MS || Math.min(SSH_TIMEOUT_MS, 12000));
 const REFRESH_CONCURRENCY = clampInt(process.env.REFRESH_CONCURRENCY, 1, 32, 8);
 const ASSET_SSH_TIMEOUT_MS = Number(process.env.ASSET_SSH_TIMEOUT_MS || 120000);
 const ASSET_CONCURRENCY = clampInt(process.env.ASSET_CONCURRENCY, 1, 16, 3);
@@ -450,6 +451,7 @@ function createPendingStatus(server) {
     totalCount,
     models: server.models && server.models.length ? server.models : collectModels(gpus),
     gpus,
+    system: createEmptySystemStatus(),
     error: null
   };
 }
@@ -527,8 +529,14 @@ async function refreshServer(server, options = {}) {
   const includeModels = Boolean(options.includeModels);
   const started = Date.now();
   try {
-    const output = await runProbeCommand(server);
+    const [output, systemResult] = await Promise.all([
+      runProbeCommand(server),
+      runProbeCommand(server, buildSystemCommand(server.command), SYSTEM_SSH_TIMEOUT_MS)
+        .then((result) => ({ ok: true, result }))
+        .catch((error) => ({ ok: false, error }))
+    ]);
     const parsed = parseProbeOutput(output.stdout, server.gpuCount, server.command);
+    const system = systemResult.ok ? parseSystemOutput(systemResult.result.stdout) : { error: systemResult.error.message };
     let gpus = applySavedModels(parsed.gpus, server);
     let models = collectModels(gpus);
     if (includeModels) {
@@ -554,6 +562,7 @@ async function refreshServer(server, options = {}) {
       totalCount,
       models,
       gpus,
+      system,
       error: null
     };
     if (busyCount > 0) {
@@ -580,6 +589,7 @@ async function refreshServer(server, options = {}) {
       totalCount: server.gpuCount,
       models: pending.models,
       gpus: pending.gpus,
+      system: pending.system,
       error: error.message
     };
     statusCache.set(server.id, status);
@@ -699,6 +709,54 @@ function buildModelCommand(command) {
     ].join(" ");
   }
   return buildHySmiCommand("--showproductname");
+}
+
+function buildSystemCommand(command) {
+  const driverCommand = command === "nvidia-smi"
+    ? "nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits 2>/dev/null | head -n 1"
+    : `${buildHySmiCommand("-v")} 2>/dev/null | head -n 3 | tr '\\n' ' '`;
+  return [
+    "read cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat;",
+    "idle1=$((idle+iowait)); total1=$((user+nice+system+idle+iowait+irq+softirq+steal));",
+    "energy_before=$(awk '{sum+=$1} END{printf \"%.0f\", sum}' /sys/class/powercap/*/energy_uj 2>/dev/null);",
+    "sleep 0.2;",
+    "read cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat;",
+    "idle2=$((idle+iowait)); total2=$((user+nice+system+idle+iowait+irq+softirq+steal));",
+    "energy_after=$(awk '{sum+=$1} END{printf \"%.0f\", sum}' /sys/class/powercap/*/energy_uj 2>/dev/null);",
+    "cpu_util=$(awk -v t1=\"$total1\" -v t2=\"$total2\" -v i1=\"$idle1\" -v i2=\"$idle2\" 'BEGIN{dt=t2-t1; di=i2-i1; if(dt>0) printf \"%.1f\", (dt-di)*100/dt}');",
+    "cpu_power=$(awk -v b=\"$energy_before\" -v a=\"$energy_after\" 'BEGIN{if(a>b && b>0) printf \"%.1f\", (a-b)/1000000/0.2}');",
+    "mem_total=$(awk '/^MemTotal:/ {printf \"%.0f\", $2/1024}' /proc/meminfo 2>/dev/null);",
+    "mem_avail=$(awk '/^MemAvailable:/ {printf \"%.0f\", $2/1024}' /proc/meminfo 2>/dev/null);",
+    "mem_used=$(awk -v t=\"$mem_total\" -v a=\"$mem_avail\" 'BEGIN{if(t>0 && a>=0) printf \"%.0f\", t-a}');",
+    "mem_util=$(awk -v t=\"$mem_total\" -v u=\"$mem_used\" 'BEGIN{if(t>0) printf \"%.1f\", u*100/t}');",
+    "cpu_model=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \\t]+/, \"\", $2); if($2){print $2; exit}}' /proc/cpuinfo 2>/dev/null);",
+    "cpu_cores=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null);",
+    "load_avg=$(cut -d ' ' -f 1-3 /proc/loadavg 2>/dev/null);",
+    "uptime_seconds=$(awk '{printf \"%.0f\", $1}' /proc/uptime 2>/dev/null);",
+    "os_name=$(awk -F= '/^PRETTY_NAME=/ {gsub(/^\"|\"$/, \"\", $2); print $2}' /etc/os-release 2>/dev/null);",
+    "kernel=$(uname -r 2>/dev/null);",
+    "arch=$(uname -m 2>/dev/null);",
+    "host_name=$(hostname 2>/dev/null);",
+    "cpu_temp=$(sensors 2>/dev/null | awk '/Package id 0|Tctl|Tdie|CPU/ {for(i=1;i<=NF;i++) if($i ~ /^\\+?[0-9.]+°?C$/){gsub(/[^0-9.]/,\"\",$i); if($i>max) max=$i}} END{if(max>0) printf \"%.1f\", max}');",
+    "if [ -z \"$cpu_temp\" ]; then cpu_temp=$(awk '{v=$1; if(v>1000) v=v/1000; if(v>max) max=v} END{if(max>0) printf \"%.1f\", max}' /sys/class/thermal/thermal_zone*/temp 2>/dev/null); fi;",
+    `driver_version=$( ${driverCommand} );`,
+    "printf 'SYS\\tcpuUtilization\\t%s\\n' \"$cpu_util\";",
+    "printf 'SYS\\tcpuModel\\t%s\\n' \"$cpu_model\";",
+    "printf 'SYS\\tcpuCores\\t%s\\n' \"$cpu_cores\";",
+    "printf 'SYS\\tcpuTemperatureC\\t%s\\n' \"$cpu_temp\";",
+    "printf 'SYS\\tcpuPowerW\\t%s\\n' \"$cpu_power\";",
+    "printf 'SYS\\tmemoryUsedMiB\\t%s\\n' \"$mem_used\";",
+    "printf 'SYS\\tmemoryTotalMiB\\t%s\\n' \"$mem_total\";",
+    "printf 'SYS\\tmemoryUtilization\\t%s\\n' \"$mem_util\";",
+    "printf 'SYS\\tloadAverage\\t%s\\n' \"$load_avg\";",
+    "printf 'SYS\\tuptimeSeconds\\t%s\\n' \"$uptime_seconds\";",
+    "printf 'SYS\\tosName\\t%s\\n' \"$os_name\";",
+    "printf 'SYS\\tkernel\\t%s\\n' \"$kernel\";",
+    "printf 'SYS\\tarch\\t%s\\n' \"$arch\";",
+    "printf 'SYS\\thostname\\t%s\\n' \"$host_name\";",
+    "printf 'SYS\\tdriverVersion\\t%s\\n' \"$driver_version\";",
+    "true"
+  ].join(" ");
 }
 
 function buildAssetCommand() {
@@ -926,6 +984,73 @@ function parseAssetOutput(output) {
     modelItems: collapseModelItems(modelItems).slice(0, ASSET_MAX_ITEMS),
     dockerImages: dedupeBy(dockerImages, (item) => `${item.repository}:${item.tag}:${item.imageId}`).slice(0, ASSET_MAX_ITEMS)
   };
+}
+
+function createEmptySystemStatus() {
+  return {
+    cpuUtilization: null,
+    cpuModel: null,
+    cpuCores: null,
+    cpuTemperatureC: null,
+    cpuPowerW: null,
+    memoryUsedMiB: null,
+    memoryTotalMiB: null,
+    memoryUtilization: null,
+    loadAverage: null,
+    uptimeSeconds: null,
+    osName: null,
+    kernel: null,
+    arch: null,
+    hostname: null,
+    driverVersion: null,
+    error: null
+  };
+}
+
+function parseSystemOutput(output) {
+  const system = createEmptySystemStatus();
+  const numericFields = new Set([
+    "cpuUtilization",
+    "cpuCores",
+    "cpuTemperatureC",
+    "cpuPowerW",
+    "memoryUsedMiB",
+    "memoryTotalMiB",
+    "memoryUtilization",
+    "uptimeSeconds"
+  ]);
+  const textFields = new Set([
+    "cpuModel",
+    "loadAverage",
+    "osName",
+    "kernel",
+    "arch",
+    "hostname",
+    "driverVersion"
+  ]);
+
+  for (const rawLine of String(output || "").split(/\r?\n/)) {
+    if (!rawLine.startsWith("SYS\t")) continue;
+    const parts = rawLine.split("\t");
+    const key = parts[1];
+    const value = normalizeSystemValue(parts.slice(2).join("\t"));
+    if (numericFields.has(key)) {
+      system[key] = parseNullableNumber(value);
+      continue;
+    }
+    if (textFields.has(key)) {
+      system[key] = value || null;
+    }
+  }
+
+  return system;
+}
+
+function normalizeSystemValue(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
 }
 
 function collapseModelItems(items) {
