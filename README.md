@@ -24,6 +24,7 @@
 - 同时显示显存占用和算力占用。
 - 根据显存占用和算力占用综合判断每张卡是否可用。
 - 同步展示 CPU 利用率、CPU 型号、核心数、内存使用率、负载、运行时间、系统版本、内核架构和 GPU/DCU 驱动版本。
+- 服务器详情页按 CPU、内存、系统版本、DCU/GPU 卡状态、模型与镜像分块展示，并支持只刷新当前服务器。
 - CPU 温度和 CPU 功耗按目标机器能力 best-effort 采集；如果 `sensors`、`/sys/class/thermal` 或 `powercap` 不可用，对应字段会显示为空，不影响 GPU/DCU 状态刷新。
 - 主界面用水位色块展示每张卡的显存和算力占用。
 - 支持手动刷新模型资产，也会每天 02:00 自动盘点每台服务器常见模型目录下的模型文件/目录，并展示 Docker images。
@@ -266,6 +267,7 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 
 - `PORT`：网页端口，默认 `3066`。
 - `POLL_INTERVAL_MS`：自动采集间隔，默认 `10000` 毫秒。
+- DCU/GPU 以外的 CPU、内存、系统版本和驱动版本信息跟随同一轮状态采集刷新，因此默认也是每 `POLL_INTERVAL_MS` 刷新一次；详情页“刷新当前”只刷新当前机器。
 - `SSH_TIMEOUT_MS`：单台服务器 SSH/采集命令超时，默认 `20000` 毫秒。部分 NVIDIA 机器执行 `nvidia-smi` 较慢时可以继续调大。
 - `SYSTEM_SSH_TIMEOUT_MS`：CPU/系统信息探针 SSH 超时，默认不超过 `12000` 毫秒。系统探针失败只会让系统信息为空，不会把服务器判定为离线。
 - `REFRESH_CONCURRENCY`：GPU/DCU 状态采集并发数，默认 `8`。

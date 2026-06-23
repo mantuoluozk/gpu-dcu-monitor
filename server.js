@@ -714,7 +714,11 @@ function buildModelCommand(command) {
 function buildSystemCommand(command) {
   const driverCommand = command === "nvidia-smi"
     ? "nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits 2>/dev/null | head -n 1"
-    : `${buildHySmiCommand("-v")} 2>/dev/null | head -n 3 | tr '\\n' ' '`;
+    : [
+      `${buildHySmiCommand("--showdriverversion")} 2>/dev/null`,
+      `${buildHySmiCommand("-q")} 2>/dev/null`,
+      `${buildHySmiCommand("-v")} 2>/dev/null`
+    ].join(" || ");
   return [
     "read cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat;",
     "idle1=$((idle+iowait)); total1=$((user+nice+system+idle+iowait+irq+softirq+steal));",
@@ -725,11 +729,14 @@ function buildSystemCommand(command) {
     "energy_after=$(awk '{sum+=$1} END{printf \"%.0f\", sum}' /sys/class/powercap/*/energy_uj 2>/dev/null);",
     "cpu_util=$(awk -v t1=\"$total1\" -v t2=\"$total2\" -v i1=\"$idle1\" -v i2=\"$idle2\" 'BEGIN{dt=t2-t1; di=i2-i1; if(dt>0) printf \"%.1f\", (dt-di)*100/dt}');",
     "cpu_power=$(awk -v b=\"$energy_before\" -v a=\"$energy_after\" 'BEGIN{if(a>b && b>0) printf \"%.1f\", (a-b)/1000000/0.2}');",
+    "if [ -z \"$cpu_power\" ]; then cpu_power=$(awk '{sum+=$1} END{if(sum>0) printf \"%.1f\", sum/1000000}' /sys/class/hwmon/hwmon*/power*_input 2>/dev/null); fi;",
+    "if [ -z \"$cpu_power\" ]; then cpu_power=$(sensors 2>/dev/null | awk '/CPU|Package|PPT|Power/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9.]+W$/){gsub(/[^0-9.]/,\"\",$i); sum+=$i}} END{if(sum>0) printf \"%.1f\", sum}'); fi;",
     "mem_total=$(awk '/^MemTotal:/ {printf \"%.0f\", $2/1024}' /proc/meminfo 2>/dev/null);",
     "mem_avail=$(awk '/^MemAvailable:/ {printf \"%.0f\", $2/1024}' /proc/meminfo 2>/dev/null);",
     "mem_used=$(awk -v t=\"$mem_total\" -v a=\"$mem_avail\" 'BEGIN{if(t>0 && a>=0) printf \"%.0f\", t-a}');",
     "mem_util=$(awk -v t=\"$mem_total\" -v u=\"$mem_used\" 'BEGIN{if(t>0) printf \"%.1f\", u*100/t}');",
     "cpu_model=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \\t]+/, \"\", $2); if($2){print $2; exit}}' /proc/cpuinfo 2>/dev/null);",
+    "cpu_models=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \\t]+/, \"\", $2); if($2){count[$2]++}} END{first=1; for(model in count){if(!first) printf \"; \"; printf \"%s x%s\", model, count[model]; first=0}}' /proc/cpuinfo 2>/dev/null);",
     "cpu_cores=$(nproc 2>/dev/null || grep -c '^processor' /proc/cpuinfo 2>/dev/null);",
     "load_avg=$(cut -d ' ' -f 1-3 /proc/loadavg 2>/dev/null);",
     "uptime_seconds=$(awk '{printf \"%.0f\", $1}' /proc/uptime 2>/dev/null);",
@@ -737,11 +744,12 @@ function buildSystemCommand(command) {
     "kernel=$(uname -r 2>/dev/null);",
     "arch=$(uname -m 2>/dev/null);",
     "host_name=$(hostname 2>/dev/null);",
-    "cpu_temp=$(sensors 2>/dev/null | awk '/Package id 0|Tctl|Tdie|CPU/ {for(i=1;i<=NF;i++) if($i ~ /^\\+?[0-9.]+°?C$/){gsub(/[^0-9.]/,\"\",$i); if($i>max) max=$i}} END{if(max>0) printf \"%.1f\", max}');",
+    "cpu_temp=$(sensors 2>/dev/null | awk '/Package id 0|Tctl|Tdie|CPU/ {for(i=1;i<=NF;i++) if($i ~ /^\\+?[0-9.]+.*C$/){gsub(/[^0-9.]/,\"\",$i); if($i>max) max=$i}} END{if(max>0) printf \"%.1f\", max}');",
     "if [ -z \"$cpu_temp\" ]; then cpu_temp=$(awk '{v=$1; if(v>1000) v=v/1000; if(v>max) max=v} END{if(max>0) printf \"%.1f\", max}' /sys/class/thermal/thermal_zone*/temp 2>/dev/null); fi;",
-    `driver_version=$( ${driverCommand} );`,
+    `driver_version=$( ( ${driverCommand} ) | awk -F: '/Driver|driver|Version|version|KMD|DTK|hy-smi|NVIDIA|[0-9]+\\.[0-9]+/ {line=$0; if(index(line, \":\")>0) line=$2; gsub(/^[ \\t=:-]+|[ \\t=:-]+$/, \"\", line); if(line && line !~ /^=+$/ && line !~ /System Management Interface/){print line; exit}}' );`,
     "printf 'SYS\\tcpuUtilization\\t%s\\n' \"$cpu_util\";",
     "printf 'SYS\\tcpuModel\\t%s\\n' \"$cpu_model\";",
+    "printf 'SYS\\tcpuModels\\t%s\\n' \"$cpu_models\";",
     "printf 'SYS\\tcpuCores\\t%s\\n' \"$cpu_cores\";",
     "printf 'SYS\\tcpuTemperatureC\\t%s\\n' \"$cpu_temp\";",
     "printf 'SYS\\tcpuPowerW\\t%s\\n' \"$cpu_power\";",
@@ -990,6 +998,7 @@ function createEmptySystemStatus() {
   return {
     cpuUtilization: null,
     cpuModel: null,
+    cpuModels: null,
     cpuCores: null,
     cpuTemperatureC: null,
     cpuPowerW: null,
@@ -1021,6 +1030,7 @@ function parseSystemOutput(output) {
   ]);
   const textFields = new Set([
     "cpuModel",
+    "cpuModels",
     "loadAverage",
     "osName",
     "kernel",
@@ -1567,6 +1577,22 @@ async function handleApi(req, res) {
     }
     sendJson(res, 200, {
       assets: publicAssetStatus(assetCache.get(server.id) || createPendingAssetStatus(), true)
+    });
+    return;
+  }
+
+  if (req.method === "POST" && parts[0] === "api" && parts[1] === "servers" && parts[2] && parts[3] === "refresh") {
+    const servers = loadServers();
+    const server = servers.find((item) => item.id === parts[2]);
+    if (!server) {
+      sendJson(res, 404, { error: "服务器不存在" });
+      return;
+    }
+    const result = await refreshServer(server, { includeModels: true });
+    sendJson(res, 200, {
+      ok: result.ok,
+      result,
+      server: publicServer(server)
     });
     return;
   }

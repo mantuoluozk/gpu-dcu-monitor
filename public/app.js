@@ -32,6 +32,7 @@ function App() {
   const [assetTotalMatches, setAssetTotalMatches] = useState(0);
   const [assetSearching, setAssetSearching] = useState(false);
   const [assetDetailLoading, setAssetDetailLoading] = useState(false);
+  const [detailRefreshing, setDetailRefreshing] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState([]);
   const [changelogUpdatedAt, setChangelogUpdatedAt] = useState(null);
   const [changelogLoading, setChangelogLoading] = useState(false);
@@ -204,6 +205,26 @@ function App() {
     }
   }, [fetchServers, notify]);
 
+  const refreshSelectedServer = useCallback(async (id) => {
+    if (!id || detailRefreshing) return;
+    setDetailRefreshing(true);
+    try {
+      const payload = await requestJson(`/api/servers/${encodeURIComponent(id)}/refresh`, { method: "POST" });
+      if (payload.server) {
+        setServers((items) => preserveAssetDetails(items, items.map((server) => (
+          server.id === id ? { ...server, ...payload.server } : server
+        ))));
+      } else {
+        await fetchServers();
+      }
+      notify(payload.ok === false ? "刷新失败" : "当前服务器已刷新");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setDetailRefreshing(false);
+    }
+  }, [detailRefreshing, fetchServers, notify]);
+
   const saveServer = useCallback(async (body, id) => {
     try {
       const payload = await requestJson(id ? `/api/servers/${encodeURIComponent(id)}` : "/api/servers", {
@@ -282,7 +303,14 @@ function App() {
           ? h(AssetView, { query, assetType, setAssetType, assetState, setAssetState, assetResults, assetTotalMatches, assetSearching, copy })
           : h(ChangelogView, { entries: changelogEntries, loading: changelogLoading, updatedAt: changelogUpdatedAt })
     ),
-    detailOpen && selectedServer ? h(DetailOverlay, { server: selectedServer, openDialog, copy, onClose: () => setDetailOpen(false) }) : null,
+    detailOpen && selectedServer ? h(DetailOverlay, {
+      server: selectedServer,
+      openDialog,
+      copy,
+      refreshing: detailRefreshing,
+      onRefresh: () => refreshSelectedServer(selectedServer.id),
+      onClose: () => setDetailOpen(false)
+    }) : null,
     dialogOpen ? h(ServerDialog, { server: dialogServer, groups: groupNames, onClose: () => setDialogOpen(false), onSave: saveServer, onDelete: deleteServer }) : null,
     toast ? h("div", { className: "toast" }, toast) : null
   );
@@ -466,7 +494,7 @@ function gpuSlots(gpus, count, serverKind) {
   });
 }
 
-function DetailOverlay({ server, openDialog, copy, onClose }) {
+function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClose }) {
   if (!server) {
     return null;
   }
@@ -485,6 +513,7 @@ function DetailOverlay({ server, openDialog, copy, onClose }) {
         h("code", null, `${server.host}:${server.port}`)
       ),
       h("div", { className: "detail-actions" },
+        h("button", { className: "ghost-action detail-refresh", type: "button", onClick: onRefresh, disabled: refreshing }, refreshing ? "刷新中" : "刷新当前"),
         h("button", { className: "icon-button", type: "button", onClick: () => openDialog(server), "aria-label": "编辑服务器" }, "✎"),
         h("button", { className: "icon-button", type: "button", onClick: onClose, "aria-label": "关闭详情" }, "×")
       )
@@ -498,8 +527,12 @@ function DetailOverlay({ server, openDialog, copy, onClose }) {
       h(MetaBox, { label: "内存", value: formatPercent(system.memoryUtilization), tone: occupancyClass(system.memoryUtilization) })
     ),
     status.error ? h("div", { className: "asset-error" }, status.error) : null,
-    h(SystemPanel, { system }),
-    h("div", { className: "gpu-list" }, (status.gpus || []).map((gpu) => h(GpuRow, { gpu, key: gpu.index }))),
+    h("div", { className: "detail-section-grid" },
+      h(CpuPanel, { system }),
+      h(MemoryPanel, { system }),
+      h(SystemPanel, { system, command: server.command })
+    ),
+    h(DevicePanel, { gpus: status.gpus || [], totalCount, command: server.command }),
     h(AssetPanel, { assets, copy })
     )
   );
@@ -509,33 +542,78 @@ function MetaBox({ label, value, tone }) {
   return h("div", { className: `meta-box ${tone || ""}` }, h("span", null, label), h("strong", null, value));
 }
 
-function SystemPanel({ system }) {
-  const rows = [
-    ["CPU型号", system.cpuModel || "-"],
-    ["CPU核心", system.cpuCores ? `${system.cpuCores} 核` : "-"],
-    ["CPU温度", formatTemperature(system.cpuTemperatureC)],
-    ["CPU功耗", formatPower(system.cpuPowerW)],
-    ["内存", formatMemory(system.memoryUsedMiB, system.memoryTotalMiB)],
-    ["负载", system.loadAverage || "-"],
-    ["系统", system.osName || "-"],
-    ["内核", [system.kernel, system.arch].filter(Boolean).join(" / ") || "-"],
-    ["驱动", system.driverVersion || "-"],
-    ["运行时间", formatDuration(system.uptimeSeconds)]
-  ];
-  return h("section", { className: "system-panel" },
-    h("div", { className: "asset-head" },
-      h("div", null, h("p", { className: "eyebrow" }, "System"), h("h3", null, "CPU 与系统信息")),
-      system.error ? h("span", null, "系统探针失败") : null
+function DetailSection({ eyebrow, title, meta, children, className }) {
+  return h("section", { className: `detail-section ${className || ""}` },
+    h("div", { className: "section-head" },
+      h("div", null, h("p", { className: "eyebrow" }, eyebrow), h("h3", null, title)),
+      meta ? h("span", null, meta) : null
     ),
-    system.error ? h("div", { className: "asset-error" }, system.error) : null,
-    h("div", { className: "system-grid" }, rows.map(([label, value]) => h("div", { className: "system-cell", key: label },
-      h("span", null, label),
-      h("strong", null, value)
-    )))
+    children
   );
 }
 
-function GpuRow({ gpu }) {
+function CpuPanel({ system }) {
+  const modelText = system.cpuModels || system.cpuModel || "-";
+  return h(DetailSection, { eyebrow: "CPU", title: "处理器", meta: formatPercent(system.cpuUtilization) },
+    h("div", { className: "metric-stack" },
+      h(MetricLine, { label: "利用率", value: formatPercent(system.cpuUtilization), percent: normalizePercent(system.cpuUtilization), level: occupancyClass(system.cpuUtilization) }),
+      h("div", { className: "detail-kv-list" },
+        h(InfoCell, { label: "CPU型号", value: modelText, wide: true }),
+        h(InfoCell, { label: "核心数", value: system.cpuCores ? `${system.cpuCores} 核` : "-" }),
+        h(InfoCell, { label: "温度", value: formatTemperature(system.cpuTemperatureC) }),
+        h(InfoCell, { label: "功耗", value: formatPower(system.cpuPowerW) }),
+        h(InfoCell, { label: "负载", value: system.loadAverage || "-" })
+      )
+    )
+  );
+}
+
+function MemoryPanel({ system }) {
+  return h(DetailSection, { eyebrow: "Memory", title: "内存", meta: formatPercent(system.memoryUtilization) },
+    h("div", { className: "metric-stack" },
+      h(MetricLine, { label: "使用率", value: formatPercent(system.memoryUtilization), percent: normalizePercent(system.memoryUtilization), level: occupancyClass(system.memoryUtilization) }),
+      h("div", { className: "detail-kv-list" },
+        h(InfoCell, { label: "已用/总量", value: formatMemory(system.memoryUsedMiB, system.memoryTotalMiB), wide: true }),
+        h(InfoCell, { label: "已用", value: formatGiB(system.memoryUsedMiB) }),
+        h(InfoCell, { label: "总量", value: formatGiB(system.memoryTotalMiB) })
+      )
+    )
+  );
+}
+
+function SystemPanel({ system, command }) {
+  return h(DetailSection, {
+    eyebrow: "System",
+    title: "系统版本",
+    meta: system.error ? "系统探针失败" : null,
+    className: system.error ? "has-error" : ""
+  },
+    system.error ? h("div", { className: "asset-error" }, system.error) : null,
+    h("div", { className: "detail-kv-list" },
+      h(InfoCell, { label: "系统", value: system.osName || "-", wide: true }),
+      h(InfoCell, { label: "内核", value: [system.kernel, system.arch].filter(Boolean).join(" / ") || "-", wide: true }),
+      h(InfoCell, { label: `${commandLabel(command)} 驱动`, value: system.driverVersion || "-", wide: true }),
+      h(InfoCell, { label: "主机名", value: system.hostname || "-" }),
+      h(InfoCell, { label: "运行时间", value: formatDuration(system.uptimeSeconds) })
+    )
+  );
+}
+
+function DevicePanel({ gpus, totalCount, command }) {
+  const label = command === "nvidia-smi" ? "GPU" : "DCU";
+  return h(DetailSection, { eyebrow: label, title: `${label} 卡状态`, meta: totalCount ? `${gpus.filter((gpu) => gpu.state === "busy").length}/${totalCount} 占用` : "识别中", className: "device-section" },
+    h("div", { className: "gpu-list" }, (gpus || []).map((gpu) => h(GpuRow, { gpu, label, key: gpu.index })))
+  );
+}
+
+function InfoCell({ label, value, wide }) {
+  return h("div", { className: `info-cell ${wide ? "wide" : ""}` },
+    h("span", null, label),
+    h("strong", null, value)
+  );
+}
+
+function GpuRow({ gpu, label }) {
   const utilization = normalizePercent(gpu.utilization);
   const memoryUtilization = normalizePercent(gpu.memoryUtilization);
   const memory = gpu.memoryTotalMiB
@@ -543,7 +621,7 @@ function GpuRow({ gpu }) {
     : gpu.memoryUtilization !== null && gpu.memoryUtilization !== undefined ? `${gpu.memoryUtilization}%` : "-";
   return h("div", { className: "gpu-row" },
     h("div", { className: "gpu-row-head" },
-      h("strong", null, `卡 #${gpu.index}${gpu.model ? ` · ${gpu.model}` : ""}`),
+      h("strong", null, `${label || "卡"} #${gpu.index}${gpu.model ? ` · ${gpu.model}` : ""}`),
       h("span", null, gpuStateLabel(gpu.state))
     ),
     h(MetricLine, { label: "显存", value: formatPercent(gpu.memoryUtilization), percent: memoryUtilization, level: occupancyClass(memoryUtilization) }),
