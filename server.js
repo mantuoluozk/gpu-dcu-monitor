@@ -713,7 +713,7 @@ function buildModelCommand(command) {
     "; printf '__GPU_MONITOR_DCU_QUERY__\\n';",
     `${buildHySmiCommand("-q")} 2>/dev/null || true`,
     "; printf '__GPU_MONITOR_ROCMINFO__\\n';",
-    "rocminfo 2>/dev/null | awk '/^Agent /{agent++} /Compute Unit|CU Count|SIMD per CU|Name:/ {printf \"ROCM\\t%s\\t%s\\n\", agent, $0}' || true"
+    "rocminfo 2>/dev/null | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function commit(){isgpu=(name ~ /^gfx/ || marketing ~ /^BW/ || vendor ~ /C-3000|Chengdu/i); if(isgpu && cu){printf \"ROCGPU\\t%s\\t%s\\t%s\\t%s\\t%s\\n\", gpu, name, marketing, vendor, cu; gpu++} name=\"\"; marketing=\"\"; vendor=\"\"; cu=\"\"} /^Agent /{commit(); next} /^[ \\t]*Name:/ && name==\"\" {name=trim($2)} /^[ \\t]*Marketing Name:/ {marketing=trim($2)} /^[ \\t]*Vendor Name:/ {vendor=trim($2)} /^[ \\t]*Compute Unit:/ {cu=trim($2)} END{commit()}' || true"
   ].join(" ");
 }
 
@@ -742,6 +742,7 @@ function buildSystemCommand(command) {
     "mem_used=$(awk -v t=\"$mem_total\" -v a=\"$mem_avail\" 'BEGIN{if(t>0 && a>=0) printf \"%.0f\", t-a}');",
     "mem_util=$(awk -v t=\"$mem_total\" -v u=\"$mem_used\" 'BEGIN{if(t>0) printf \"%.1f\", u*100/t}');",
     "cpu_model=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \\t]+/, \"\", $2); if($2){print $2; exit}}' /proc/cpuinfo 2>/dev/null);",
+    "cpu_lscpu_model=$(lscpu 2>/dev/null | awk -F: '/Model name:/ {gsub(/^[ \\t]+/, \"\", $2); print $2; exit}');",
     "cpu_dmi_models=$(dmidecode -t processor 2>/dev/null | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function useful(v){return v && v !~ /Not Specified|To Be Filled|Unknown|None/i} function commit(){v=useful(version)?version:part; if(useful(v)){count[v]++} version=\"\"; part=\"\"} /^Handle /{commit()} /^[ \\t]*Version:/ {version=trim($2)} /^[ \\t]*Part Number:/ {part=trim($2)} END{commit(); first=1; for(v in count){if(!first) printf \"; \"; printf \"%s x%s\", v, count[v]; first=0}}');",
     "dmidecode -t processor 2>/dev/null | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function clean(v){return v ~ /Not Specified|To Be Filled|Unknown|None/i ? \"\" : v} function emit(){version=clean(version); part=clean(part); if(version || part || socket){printf \"SYSCPU\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n\", socket, version, part, cores, threads, maxspeed, curspeed} socket=\"\"; version=\"\"; part=\"\"; cores=\"\"; threads=\"\"; maxspeed=\"\"; curspeed=\"\"} /^Handle /{emit()} /^[ \\t]*Socket Designation:/ {socket=trim($2)} /^[ \\t]*Version:/ {version=trim($2)} /^[ \\t]*Part Number:/ {part=trim($2)} /^[ \\t]*Core Count:/ {cores=trim($2)} /^[ \\t]*Thread Count:/ {threads=trim($2)} /^[ \\t]*Max Speed:/ {maxspeed=trim($2)} /^[ \\t]*Current Speed:/ {curspeed=trim($2)} END{emit()}';",
     "cpu_sockets=$(lscpu 2>/dev/null | awk -F: '/^Socket\\(s\\):/ {gsub(/^[ \\t]+/, \"\", $2); print $2; exit}');",
@@ -763,6 +764,7 @@ function buildSystemCommand(command) {
     "printf 'SYS\\tcpuModel\\t%s\\n' \"$cpu_model\";",
     "printf 'SYS\\tcpuModels\\t%s\\n' \"$cpu_models_text\";",
     "printf 'SYS\\tcpuModelDetail\\t%s\\n' \"$cpu_dmi_models\";",
+    "printf 'SYS\\tcpuLscpuModel\\t%s\\n' \"$cpu_lscpu_model\";",
     "printf 'SYS\\tcpuSockets\\t%s\\n' \"$cpu_sockets\";",
     "printf 'SYS\\tcpuCores\\t%s\\n' \"$cpu_cores\";",
     "printf 'SYS\\tcpuTemperatureC\\t%s\\n' \"$cpu_temp\";",
@@ -1014,6 +1016,7 @@ function createEmptySystemStatus() {
     cpuModel: null,
     cpuModels: null,
     cpuModelDetail: null,
+    cpuLscpuModel: null,
     cpuSocketDetails: [],
     cpuSockets: null,
     cpuCores: null,
@@ -1050,6 +1053,7 @@ function parseSystemOutput(output) {
     "cpuModel",
     "cpuModels",
     "cpuModelDetail",
+    "cpuLscpuModel",
     "loadAverage",
     "osName",
     "kernel",
@@ -1311,7 +1315,6 @@ function parseHyProductNames(output) {
   const byIndex = new Map();
   const lines = String(output || "").split(/\r?\n/);
   let currentIndex = null;
-  let rocAgentIndex = -1;
 
   for (const line of lines) {
     if (line === "__GPU_MONITOR_DCU_QUERY__" || line === "__GPU_MONITOR_ROCMINFO__") {
@@ -1349,18 +1352,16 @@ function parseHyProductNames(output) {
       continue;
     }
 
-    const rocAgent = line.match(/^ROCM\t(\d+)\t/i);
-    if (rocAgent) {
-      const parsedAgent = Number.parseInt(rocAgent[1], 10);
-      if (Number.isFinite(parsedAgent) && parsedAgent !== rocAgentIndex) {
-        rocAgentIndex = parsedAgent;
-        currentIndex = Math.max(0, rocAgentIndex - 1);
-      }
-      const rocCu = line.match(/\b(?:Compute\s*Unit|CU\s*Count)\b\s*[:=]?\s*(\d{1,4})\b/i);
-      if (rocCu && currentIndex >= 0 && currentIndex <= 31) {
-        const existing = byIndex.get(currentIndex) || {};
-        byIndex.set(currentIndex, { ...existing, cuCount: Number.parseInt(rocCu[1], 10) });
-      }
+    const rocGpu = line.match(/^ROCGPU\t(\d+)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t(\d{1,4})/i);
+    if (rocGpu) {
+      const index = Number.parseInt(rocGpu[1], 10);
+      const existing = byIndex.get(index) || {};
+      byIndex.set(index, {
+        ...existing,
+        model: existing.model || normalizeModelName(rocGpu[3]) || normalizeModelName(rocGpu[2]) || null,
+        vendor: existing.vendor || normalizeModelName(rocGpu[4]) || null,
+        cuCount: Number.parseInt(rocGpu[5], 10)
+      });
     }
   }
 

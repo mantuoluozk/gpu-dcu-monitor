@@ -556,7 +556,7 @@ function DetailSection({ eyebrow, title, meta, children, className }) {
 }
 
 function CpuPanel({ system }) {
-  const modelText = system.cpuModelDetail || system.cpuModels || system.cpuModel || "-";
+  const modelText = bestCpuModel(system);
   const cpuDetails = cpuPages(system);
   const [page, setPage] = useState(0);
   const safePage = Math.min(page, Math.max(cpuDetails.length - 1, 0));
@@ -638,27 +638,36 @@ function InfoCell({ label, value, wide }) {
   );
 }
 
+function bestCpuModel(system) {
+  const candidates = [system.cpuLscpuModel, system.cpuModelDetail, system.cpuModels, system.cpuModel].filter(Boolean);
+  return candidates.find((value) => /\bOPN\s*:/i.test(value)) || candidates[0] || "-";
+}
+
 function cpuPages(system) {
   const details = Array.isArray(system.cpuSocketDetails) ? system.cpuSocketDetails : [];
-  if (details.length) {
+  if (details.length && hasDistinctCpuDetails(details)) {
     return details.map((item, index) => ({
       title: item.socket || `CPU ${index + 1}`,
-      model: item.version || system.cpuModelDetail || system.cpuModels || system.cpuModel || "-",
+      model: item.version || bestCpuModel(system),
       partNumber: item.partNumber || null,
       coreThread: [item.coreCount ? `${item.coreCount} 核` : "", item.threadCount ? `${item.threadCount} 线程` : ""].filter(Boolean).join(" / "),
       currentSpeed: item.currentSpeed || null,
       maxSpeed: item.maxSpeed || null
     }));
   }
-  const count = Math.max(1, Number(system.cpuSockets) || 0);
-  return Array.from({ length: count }, (_, index) => ({
-    title: `CPU ${index + 1}`,
-    model: system.cpuModelDetail || system.cpuModels || system.cpuModel || "-",
-    partNumber: null,
-    coreThread: system.cpuCores && count ? `${Math.round(Number(system.cpuCores) / count)} 核/颗` : "",
-    currentSpeed: null,
-    maxSpeed: null
-  }));
+  return [];
+}
+
+function hasDistinctCpuDetails(details) {
+  const signatures = new Set(details.map((item) => [
+    item.version || "",
+    item.partNumber || "",
+    item.coreCount || "",
+    item.threadCount || "",
+    item.maxSpeed || "",
+    item.currentSpeed || ""
+  ].join("|")));
+  return signatures.size > 1;
 }
 
 function GpuRow({ gpu, label }) {
