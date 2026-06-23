@@ -472,6 +472,10 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       h("span", null, `内存 ${formatPercent(system.memoryUtilization)}`),
       h("span", null, `温度 ${formatTemperature(system.cpuTemperatureC)}`)
     ),
+    h("div", { className: "card-system-detail" },
+      h("span", { title: cardCpuText(system) }, cardCpuText(system)),
+      h("span", { title: cardSystemText(system, server.command) }, cardSystemText(system, server.command))
+    ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
     h("div", { className: "model-line" }, modelSummary(server)),
     h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
@@ -641,6 +645,28 @@ function InfoCell({ label, value, wide }) {
 function bestCpuModel(system) {
   const candidates = [system.cpuLscpuModel, system.cpuModelDetail, system.cpuModels, system.cpuModel].filter(Boolean);
   return candidates.find((value) => /\bOPN\s*:/i.test(value)) || candidates[0] || "-";
+}
+
+function cardCpuText(system) {
+  const model = bestCpuModel(system);
+  if (!model || model === "-") return "CPU 型号识别中";
+  return `CPU ${model}`;
+}
+
+function cardSystemText(system, command) {
+  const os = shortSystemName(system.osName);
+  const driver = system.driverVersion ? `${commandLabel(command)} ${system.driverVersion}` : "";
+  const text = [os, driver].filter(Boolean).join(" · ");
+  return text || "系统/驱动识别中";
+}
+
+function shortSystemName(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text
+    .replace(/Linux Advanced Server/i, "LAS")
+    .replace(/\(.*?\)/g, "")
+    .trim();
 }
 
 function cpuPages(system) {

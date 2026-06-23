@@ -1428,7 +1428,7 @@ function parseHySmi(output, expectedCount) {
 
 function finalizeParsedGpus(byIndex, expectedCount) {
   const detectedCount = byIndex.size ? Math.max(...byIndex.keys()) + 1 : 0;
-  const totalCount = Math.max(expectedCount || 0, detectedCount);
+  const totalCount = detectedCount || expectedCount || 0;
   const gpus = Array.from({ length: totalCount }, (_, index) => {
     const parsed = byIndex.get(index) || createGpu(index);
     const busy = isGpuBusy(parsed);
@@ -1542,15 +1542,14 @@ function applySavedModels(gpus, server) {
     return {
       ...gpu,
       model: gpu.model || saved.model || fallbackModel || null,
-      vendor: gpu.vendor || saved.vendor || null
+      vendor: gpu.vendor || saved.vendor || null,
+      cuCount: gpu.cuCount || saved.cuCount || null
     };
   });
 }
 
 function mergeGpuModels(gpus, modelByIndex) {
-  const detectedCount = modelByIndex.size ? Math.max(...modelByIndex.keys()) + 1 : 0;
-  const totalCount = Math.max(gpus.length, detectedCount);
-  return Array.from({ length: totalCount }, (_, index) => gpus[index] || createGpu(index)).map((gpu) => {
+  return gpus.map((gpu) => {
     const detected = modelByIndex.get(gpu.index) || {};
     return {
       ...gpu,
@@ -1566,9 +1565,10 @@ function extractGpuModels(gpus) {
     .map((gpu) => ({
       index: gpu.index,
       model: gpu.model || null,
-      vendor: gpu.vendor || null
+      vendor: gpu.vendor || null,
+      cuCount: gpu.cuCount || null
     }))
-    .filter((gpu) => gpu.model || gpu.vendor);
+    .filter((gpu) => gpu.model || gpu.vendor || gpu.cuCount);
 }
 
 function isGpuBusy(gpu) {

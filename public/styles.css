@@ -649,6 +649,33 @@ code {
   white-space: nowrap;
 }
 
+.card-system-detail {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0 0 7px 4px;
+  border: 1px solid rgba(47, 111, 221, 0.18);
+  border-left: 3px solid var(--accent);
+  border-radius: 7px;
+  background: linear-gradient(90deg, rgba(47, 111, 221, 0.08), #fff);
+  padding: 6px 7px;
+}
+
+.card-system-detail span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-system-detail span:first-child {
+  color: var(--ink);
+}
+
 .slot-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
