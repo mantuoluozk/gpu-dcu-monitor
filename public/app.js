@@ -211,9 +211,12 @@ function App() {
     try {
       const payload = await requestJson(`/api/servers/${encodeURIComponent(id)}/refresh`, { method: "POST" });
       if (payload.server) {
-        setServers((items) => preserveAssetDetails(items, items.map((server) => (
-          server.id === id ? { ...server, ...payload.server } : server
-        ))));
+        setServers((items) => {
+          const nextServers = items.map((server) => (
+            server.id === id ? { ...server, ...payload.server } : server
+          ));
+          return mergeServerAssetDetails(nextServers, items);
+        });
       } else {
         await fetchServers();
       }
@@ -559,7 +562,8 @@ function CpuPanel({ system }) {
       h(MetricLine, { label: "利用率", value: formatPercent(system.cpuUtilization), percent: normalizePercent(system.cpuUtilization), level: occupancyClass(system.cpuUtilization) }),
       h("div", { className: "detail-kv-list" },
         h(InfoCell, { label: "CPU型号", value: modelText, wide: true }),
-        h(InfoCell, { label: "核心数", value: system.cpuCores ? `${system.cpuCores} 核` : "-" }),
+        h(InfoCell, { label: "物理CPU", value: system.cpuSockets ? `${system.cpuSockets} 颗` : "-" }),
+        h(InfoCell, { label: "逻辑核心", value: system.cpuCores ? `${system.cpuCores} 核` : "-" }),
         h(InfoCell, { label: "温度", value: formatTemperature(system.cpuTemperatureC) }),
         h(InfoCell, { label: "功耗", value: formatPower(system.cpuPowerW) }),
         h(InfoCell, { label: "负载", value: system.loadAverage || "-" })
