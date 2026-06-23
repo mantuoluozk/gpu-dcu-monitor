@@ -556,24 +556,45 @@ function DetailSection({ eyebrow, title, meta, children, className }) {
 }
 
 function CpuPanel({ system }) {
-  const modelText = system.cpuModels || system.cpuModel || "-";
-  return h(DetailSection, { eyebrow: "CPU", title: "处理器", meta: formatPercent(system.cpuUtilization) },
+  const modelText = system.cpuModelDetail || system.cpuModels || system.cpuModel || "-";
+  const cpuDetails = cpuPages(system);
+  const [page, setPage] = useState(0);
+  const safePage = Math.min(page, Math.max(cpuDetails.length - 1, 0));
+  const current = cpuDetails[safePage] || null;
+  return h(DetailSection, { eyebrow: "CPU", title: "处理器", meta: formatPercent(system.cpuUtilization), className: "cpu-section" },
     h("div", { className: "metric-stack" },
       h(MetricLine, { label: "利用率", value: formatPercent(system.cpuUtilization), percent: normalizePercent(system.cpuUtilization), level: occupancyClass(system.cpuUtilization) }),
+      current ? h("div", { className: "cpu-pager" },
+        h("div", { className: "cpu-pager-head" },
+          h("strong", null, current.title),
+          h("span", null, `${safePage + 1}/${cpuDetails.length}`)
+        ),
+        h("div", { className: "cpu-pager-body" },
+          h(InfoCell, { label: "具体型号", value: current.model, wide: true }),
+          h(InfoCell, { label: "部件号", value: current.partNumber || "-" }),
+          h(InfoCell, { label: "核心/线程", value: current.coreThread || "-" }),
+          h(InfoCell, { label: "当前频率", value: current.currentSpeed || "-" }),
+          h(InfoCell, { label: "最高频率", value: current.maxSpeed || "-" })
+        ),
+        cpuDetails.length > 1 ? h("div", { className: "cpu-pager-actions" },
+          h("button", { type: "button", className: "mini-copy", onClick: () => setPage((value) => Math.max(0, value - 1)), disabled: safePage <= 0 }, "上一颗"),
+          h("button", { type: "button", className: "mini-copy", onClick: () => setPage((value) => Math.min(cpuDetails.length - 1, value + 1)), disabled: safePage >= cpuDetails.length - 1 }, "下一颗")
+        ) : null
+      ) : null,
       h("div", { className: "detail-kv-list" },
         h(InfoCell, { label: "CPU型号", value: modelText, wide: true }),
         h(InfoCell, { label: "物理CPU", value: system.cpuSockets ? `${system.cpuSockets} 颗` : "-" }),
         h(InfoCell, { label: "逻辑核心", value: system.cpuCores ? `${system.cpuCores} 核` : "-" }),
         h(InfoCell, { label: "温度", value: formatTemperature(system.cpuTemperatureC) }),
         h(InfoCell, { label: "功耗", value: formatPower(system.cpuPowerW) }),
-        h(InfoCell, { label: "负载", value: system.loadAverage || "-" })
+        h(InfoCell, { label: "负载", value: formatLoadAverage(system.loadAverage) })
       )
     )
   );
 }
 
 function MemoryPanel({ system }) {
-  return h(DetailSection, { eyebrow: "Memory", title: "内存", meta: formatPercent(system.memoryUtilization) },
+  return h(DetailSection, { eyebrow: "Memory", title: "内存", meta: formatPercent(system.memoryUtilization), className: "memory-section" },
     h("div", { className: "metric-stack" },
       h(MetricLine, { label: "使用率", value: formatPercent(system.memoryUtilization), percent: normalizePercent(system.memoryUtilization), level: occupancyClass(system.memoryUtilization) }),
       h("div", { className: "detail-kv-list" },
@@ -590,7 +611,7 @@ function SystemPanel({ system, command }) {
     eyebrow: "System",
     title: "系统版本",
     meta: system.error ? "系统探针失败" : null,
-    className: system.error ? "has-error" : ""
+    className: `system-section ${system.error ? "has-error" : ""}`
   },
     system.error ? h("div", { className: "asset-error" }, system.error) : null,
     h("div", { className: "detail-kv-list" },
@@ -617,6 +638,29 @@ function InfoCell({ label, value, wide }) {
   );
 }
 
+function cpuPages(system) {
+  const details = Array.isArray(system.cpuSocketDetails) ? system.cpuSocketDetails : [];
+  if (details.length) {
+    return details.map((item, index) => ({
+      title: item.socket || `CPU ${index + 1}`,
+      model: item.version || system.cpuModelDetail || system.cpuModels || system.cpuModel || "-",
+      partNumber: item.partNumber || null,
+      coreThread: [item.coreCount ? `${item.coreCount} 核` : "", item.threadCount ? `${item.threadCount} 线程` : ""].filter(Boolean).join(" / "),
+      currentSpeed: item.currentSpeed || null,
+      maxSpeed: item.maxSpeed || null
+    }));
+  }
+  const count = Math.max(1, Number(system.cpuSockets) || 0);
+  return Array.from({ length: count }, (_, index) => ({
+    title: `CPU ${index + 1}`,
+    model: system.cpuModelDetail || system.cpuModels || system.cpuModel || "-",
+    partNumber: null,
+    coreThread: system.cpuCores && count ? `${Math.round(Number(system.cpuCores) / count)} 核/颗` : "",
+    currentSpeed: null,
+    maxSpeed: null
+  }));
+}
+
 function GpuRow({ gpu, label }) {
   const utilization = normalizePercent(gpu.utilization);
   const memoryUtilization = normalizePercent(gpu.memoryUtilization);
@@ -632,6 +676,7 @@ function GpuRow({ gpu, label }) {
     h(MetricLine, { label: "算力", value: formatPercent(gpu.utilization), percent: utilization, level: occupancyClass(utilization) }),
     h("div", { className: "gpu-metrics" },
       h("span", null, `显存 ${memory}`),
+      h("span", null, `CU ${gpu.cuCount ?? "-"}`),
       h("span", null, `温度 ${gpu.temperatureC ?? "-"}℃`),
       h("span", null, `功耗 ${gpu.powerW ?? "-"}W`)
     )
@@ -954,6 +999,12 @@ function formatDuration(seconds) {
   if (days > 0) return `${days}天 ${hours}小时`;
   if (hours > 0) return `${hours}小时`;
   return `${Math.max(1, Math.floor(total / 60))}分钟`;
+}
+
+function formatLoadAverage(value) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 3) return value || "-";
+  return `1m ${parts[0]} / 5m ${parts[1]} / 15m ${parts[2]}`;
 }
 
 function occupancyClass(value) {

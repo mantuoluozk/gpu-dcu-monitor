@@ -708,7 +708,13 @@ function buildModelCommand(command) {
       "--format=csv,noheader,nounits"
     ].join(" ");
   }
-  return buildHySmiCommand("--showproductname");
+  return [
+    buildHySmiCommand("--showproductname"),
+    "; printf '__GPU_MONITOR_DCU_QUERY__\\n';",
+    `${buildHySmiCommand("-q")} 2>/dev/null || true`,
+    "; printf '__GPU_MONITOR_ROCMINFO__\\n';",
+    "rocminfo 2>/dev/null | awk '/^Agent /{agent++} /Compute Unit|CU Count|SIMD per CU|Name:/ {printf \"ROCM\\t%s\\t%s\\n\", agent, $0}' || true"
+  ].join(" ");
 }
 
 function buildSystemCommand(command) {
@@ -736,6 +742,8 @@ function buildSystemCommand(command) {
     "mem_used=$(awk -v t=\"$mem_total\" -v a=\"$mem_avail\" 'BEGIN{if(t>0 && a>=0) printf \"%.0f\", t-a}');",
     "mem_util=$(awk -v t=\"$mem_total\" -v u=\"$mem_used\" 'BEGIN{if(t>0) printf \"%.1f\", u*100/t}');",
     "cpu_model=$(awk -F: '/model name|Hardware|Processor/ {gsub(/^[ \\t]+/, \"\", $2); if($2){print $2; exit}}' /proc/cpuinfo 2>/dev/null);",
+    "cpu_dmi_models=$(dmidecode -t processor 2>/dev/null | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function useful(v){return v && v !~ /Not Specified|To Be Filled|Unknown|None/i} function commit(){v=useful(version)?version:part; if(useful(v)){count[v]++} version=\"\"; part=\"\"} /^Handle /{commit()} /^[ \\t]*Version:/ {version=trim($2)} /^[ \\t]*Part Number:/ {part=trim($2)} END{commit(); first=1; for(v in count){if(!first) printf \"; \"; printf \"%s x%s\", v, count[v]; first=0}}');",
+    "dmidecode -t processor 2>/dev/null | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function clean(v){return v ~ /Not Specified|To Be Filled|Unknown|None/i ? \"\" : v} function emit(){version=clean(version); part=clean(part); if(version || part || socket){printf \"SYSCPU\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n\", socket, version, part, cores, threads, maxspeed, curspeed} socket=\"\"; version=\"\"; part=\"\"; cores=\"\"; threads=\"\"; maxspeed=\"\"; curspeed=\"\"} /^Handle /{emit()} /^[ \\t]*Socket Designation:/ {socket=trim($2)} /^[ \\t]*Version:/ {version=trim($2)} /^[ \\t]*Part Number:/ {part=trim($2)} /^[ \\t]*Core Count:/ {cores=trim($2)} /^[ \\t]*Thread Count:/ {threads=trim($2)} /^[ \\t]*Max Speed:/ {maxspeed=trim($2)} /^[ \\t]*Current Speed:/ {curspeed=trim($2)} END{emit()}';",
     "cpu_sockets=$(lscpu 2>/dev/null | awk -F: '/^Socket\\(s\\):/ {gsub(/^[ \\t]+/, \"\", $2); print $2; exit}');",
     "cpu_models=$(awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function commit(){if(model){if(phys!=\"\"){hasphys=1; key=phys SUBSEP model; socketModel[key]=model}else{fallback[model]=1}} model=\"\"; phys=\"\"} /^processor[ \\t]*:/ {commit(); next} /model name|Hardware|Processor/ {if(!model && $2) model=trim($2)} /physical id/ {phys=trim($2)} END{commit(); if(hasphys){for(k in socketModel){count[socketModel[k]]++; sockets++}}else{for(m in fallback){count[m]++; sockets++}} first=1; for(m in count){if(!first) printf \"; \"; printf \"%s x%s\", m, count[m]; first=0} printf \"\\nSOCKETS\\t%s\", sockets}' /proc/cpuinfo 2>/dev/null);",
     "cpu_models_text=$(printf '%s\\n' \"$cpu_models\" | awk -F '\\t' '$1!=\"SOCKETS\" {print; exit}');",
@@ -754,6 +762,7 @@ function buildSystemCommand(command) {
     "printf 'SYS\\tcpuUtilization\\t%s\\n' \"$cpu_util\";",
     "printf 'SYS\\tcpuModel\\t%s\\n' \"$cpu_model\";",
     "printf 'SYS\\tcpuModels\\t%s\\n' \"$cpu_models_text\";",
+    "printf 'SYS\\tcpuModelDetail\\t%s\\n' \"$cpu_dmi_models\";",
     "printf 'SYS\\tcpuSockets\\t%s\\n' \"$cpu_sockets\";",
     "printf 'SYS\\tcpuCores\\t%s\\n' \"$cpu_cores\";",
     "printf 'SYS\\tcpuTemperatureC\\t%s\\n' \"$cpu_temp\";",
@@ -1004,6 +1013,8 @@ function createEmptySystemStatus() {
     cpuUtilization: null,
     cpuModel: null,
     cpuModels: null,
+    cpuModelDetail: null,
+    cpuSocketDetails: [],
     cpuSockets: null,
     cpuCores: null,
     cpuTemperatureC: null,
@@ -1038,6 +1049,7 @@ function parseSystemOutput(output) {
   const textFields = new Set([
     "cpuModel",
     "cpuModels",
+    "cpuModelDetail",
     "loadAverage",
     "osName",
     "kernel",
@@ -1047,6 +1059,22 @@ function parseSystemOutput(output) {
   ]);
 
   for (const rawLine of String(output || "").split(/\r?\n/)) {
+    if (rawLine.startsWith("SYSCPU\t")) {
+      const parts = rawLine.split("\t");
+      const detail = {
+        socket: normalizeSystemValue(parts[1]) || null,
+        version: normalizeSystemValue(parts[2]) || null,
+        partNumber: normalizeSystemValue(parts[3]) || null,
+        coreCount: parseNullableNumber(parts[4]),
+        threadCount: parseNullableNumber(parts[5]),
+        maxSpeed: normalizeSystemValue(parts[6]) || null,
+        currentSpeed: normalizeSystemValue(parts[7]) || null
+      };
+      if (detail.socket || detail.version || detail.partNumber) {
+        system.cpuSocketDetails.push(detail);
+      }
+      continue;
+    }
     if (!rawLine.startsWith("SYS\t")) continue;
     const parts = rawLine.split("\t");
     const key = parts[1];
@@ -1282,11 +1310,19 @@ function parseNvidiaModels(output) {
 function parseHyProductNames(output) {
   const byIndex = new Map();
   const lines = String(output || "").split(/\r?\n/);
+  let currentIndex = null;
+  let rocAgentIndex = -1;
 
   for (const line of lines) {
+    if (line === "__GPU_MONITOR_DCU_QUERY__" || line === "__GPU_MONITOR_ROCMINFO__") {
+      currentIndex = null;
+      continue;
+    }
+
     const series = line.match(/\b(?:HCU|DCU|GPU)\[(\d{1,2})\].*?\bCard\s+Series\s*:\s*(.+)$/i);
     if (series) {
       const index = Number.parseInt(series[1], 10);
+      currentIndex = index;
       const existing = byIndex.get(index) || {};
       byIndex.set(index, { ...existing, model: normalizeModelName(series[2]) });
       continue;
@@ -1295,8 +1331,36 @@ function parseHyProductNames(output) {
     const vendor = line.match(/\b(?:HCU|DCU|GPU)\[(\d{1,2})\].*?\bCard\s+Vendor\s*:\s*(.+)$/i);
     if (vendor) {
       const index = Number.parseInt(vendor[1], 10);
+      currentIndex = index;
       const existing = byIndex.get(index) || {};
       byIndex.set(index, { ...existing, vendor: normalizeModelName(vendor[2]) });
+      continue;
+    }
+
+    const indexMatch = line.match(/\b(?:HCU|DCU|GPU|Card)\s*\[?(\d{1,2})\]?\b/i);
+    if (indexMatch) {
+      currentIndex = Number.parseInt(indexMatch[1], 10);
+    }
+
+    const cu = line.match(/\b(?:Compute\s*Units?|CU\s*(?:Count|Num|Number)?|CUs)\b\s*[:=]?\s*(\d{1,4})\b/i);
+    if (cu && currentIndex !== null && currentIndex >= 0 && currentIndex <= 31) {
+      const existing = byIndex.get(currentIndex) || {};
+      byIndex.set(currentIndex, { ...existing, cuCount: Number.parseInt(cu[1], 10) });
+      continue;
+    }
+
+    const rocAgent = line.match(/^ROCM\t(\d+)\t/i);
+    if (rocAgent) {
+      const parsedAgent = Number.parseInt(rocAgent[1], 10);
+      if (Number.isFinite(parsedAgent) && parsedAgent !== rocAgentIndex) {
+        rocAgentIndex = parsedAgent;
+        currentIndex = Math.max(0, rocAgentIndex - 1);
+      }
+      const rocCu = line.match(/\b(?:Compute\s*Unit|CU\s*Count)\b\s*[:=]?\s*(\d{1,4})\b/i);
+      if (rocCu && currentIndex >= 0 && currentIndex <= 31) {
+        const existing = byIndex.get(currentIndex) || {};
+        byIndex.set(currentIndex, { ...existing, cuCount: Number.parseInt(rocCu[1], 10) });
+      }
     }
   }
 
@@ -1355,6 +1419,7 @@ function createGpu(index) {
     memoryTotalMiB: null,
     temperatureC: null,
     powerW: null,
+    cuCount: null,
     model: null,
     vendor: null,
     raw: ""
@@ -1453,7 +1518,8 @@ function mergeGpuModels(gpus, modelByIndex) {
     return {
       ...gpu,
       model: detected.model || gpu.model || null,
-      vendor: detected.vendor || gpu.vendor || null
+      vendor: detected.vendor || gpu.vendor || null,
+      cuCount: detected.cuCount || gpu.cuCount || null
     };
   });
 }
