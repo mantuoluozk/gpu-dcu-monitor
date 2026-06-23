@@ -7,6 +7,7 @@
 - CPU 翻页改为仅在每颗 CPU 明细确实不同时显示；同型号多路机器只展示汇总，避免重复页面。CPU 具体型号优先采用 `lscpu` 中带 OPN 的 `Model name`。
 - DCU 卡详情新增 CU 数展示，优先从 `hy-smi -q` 解析，必要时尝试 `rocminfo` 作为兜底。
 - 修正 `rocminfo` CU 解析：会跳过 Hygon CPU Agent，只将 `gfx*` / `BW*` / `C-3000` 等 DCU Agent 映射到 DCU 卡。
+- `rocminfo` 采集增加登录 Shell 和 `/opt/hyhal/env.sh` 兜底；`hy-smi -q` 的 CU 行在没有卡号时会按出现顺序映射到 DCU 卡。
 - 详情页视觉分区增加主题色标题条，CPU、内存、系统、DCU/GPU、模型镜像板块使用不同强调色，提升扫描辨识度。
 - 修复详情页点击“刷新当前”后白屏的问题：单台刷新结果现在会正确合并回服务器列表，并保留已加载的模型/镜像详情。
 - CPU 型号汇总改为按物理 CPU/socket 统计，不再把每个逻辑核心都算成一颗 CPU；详情页同时显示物理 CPU 数和逻辑核心数。

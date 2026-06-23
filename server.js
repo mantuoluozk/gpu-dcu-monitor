@@ -713,8 +713,13 @@ function buildModelCommand(command) {
     "; printf '__GPU_MONITOR_DCU_QUERY__\\n';",
     `${buildHySmiCommand("-q")} 2>/dev/null || true`,
     "; printf '__GPU_MONITOR_ROCMINFO__\\n';",
-    "rocminfo 2>/dev/null | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function commit(){isgpu=(name ~ /^gfx/ || marketing ~ /^BW/ || vendor ~ /C-3000|Chengdu/i); if(isgpu && cu){printf \"ROCGPU\\t%s\\t%s\\t%s\\t%s\\t%s\\n\", gpu, name, marketing, vendor, cu; gpu++} name=\"\"; marketing=\"\"; vendor=\"\"; cu=\"\"} /^Agent /{commit(); next} /^[ \\t]*Name:/ && name==\"\" {name=trim($2)} /^[ \\t]*Marketing Name:/ {marketing=trim($2)} /^[ \\t]*Vendor Name:/ {vendor=trim($2)} /^[ \\t]*Compute Unit:/ {cu=trim($2)} END{commit()}' || true"
+    `${buildRocminfoCommand()} | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function commit(){isgpu=(name ~ /^gfx/ || marketing ~ /^BW/ || vendor ~ /C-3000|Chengdu/i); if(isgpu && cu){printf \"ROCGPU\\t%s\\t%s\\t%s\\t%s\\t%s\\n\", gpu, name, marketing, vendor, cu; gpu++} name=\"\"; marketing=\"\"; vendor=\"\"; cu=\"\"} /^Agent /{commit(); next} /^[ \\t]*Name:/ && name==\"\" {name=trim($2)} /^[ \\t]*Marketing Name:/ {marketing=trim($2)} /^[ \\t]*Vendor Name:/ {vendor=trim($2)} /^[ \\t]*Compute Unit:/ {cu=trim($2)} END{commit()}' || true`
   ].join(" ");
+}
+
+function buildRocminfoCommand() {
+  const hyhalCommand = ". /opt/hyhal/env.sh >/dev/null 2>&1 && rocminfo";
+  return `(rocminfo 2>/dev/null || bash -ilc ${shellQuote("rocminfo")} || bash -lc ${shellQuote(hyhalCommand)}) 2>/dev/null`;
 }
 
 function buildSystemCommand(command) {
@@ -1315,6 +1320,7 @@ function parseHyProductNames(output) {
   const byIndex = new Map();
   const lines = String(output || "").split(/\r?\n/);
   let currentIndex = null;
+  let nextCuIndex = 0;
 
   for (const line of lines) {
     if (line === "__GPU_MONITOR_DCU_QUERY__" || line === "__GPU_MONITOR_ROCMINFO__") {
@@ -1346,9 +1352,13 @@ function parseHyProductNames(output) {
     }
 
     const cu = line.match(/\b(?:Compute\s*Units?|CU\s*(?:Count|Num|Number)?|CUs)\b\s*[:=]?\s*(\d{1,4})\b/i);
-    if (cu && currentIndex !== null && currentIndex >= 0 && currentIndex <= 31) {
-      const existing = byIndex.get(currentIndex) || {};
-      byIndex.set(currentIndex, { ...existing, cuCount: Number.parseInt(cu[1], 10) });
+    if (cu) {
+      const targetIndex = currentIndex !== null ? currentIndex : nextCuIndex;
+      if (targetIndex >= 0 && targetIndex <= 31) {
+        const existing = byIndex.get(targetIndex) || {};
+        byIndex.set(targetIndex, { ...existing, cuCount: Number.parseInt(cu[1], 10) });
+        if (currentIndex === null) nextCuIndex += 1;
+      }
       continue;
     }
 
