@@ -713,7 +713,7 @@ function buildModelCommand(command) {
     "; printf '__GPU_MONITOR_DCU_QUERY__\\n';",
     `${buildHySmiCommand("-q")} 2>/dev/null || true`,
     "; printf '__GPU_MONITOR_ROCMINFO__\\n';",
-    `${buildRocminfoCommand()} | awk -F: 'function trim(v){gsub(/^[ \\t]+|[ \\t]+$/, \"\", v); return v} function commit(){isgpu=(name ~ /^gfx/ || marketing ~ /^BW/ || vendor ~ /C-3000|Chengdu/i); if(isgpu && cu){printf \"ROCGPU\\t%s\\t%s\\t%s\\t%s\\t%s\\n\", gpu, name, marketing, vendor, cu; gpu++} name=\"\"; marketing=\"\"; vendor=\"\"; cu=\"\"} /^Agent /{commit(); next} /^[ \\t]*Name:/ && name==\"\" {name=trim($2)} /^[ \\t]*Marketing Name:/ {marketing=trim($2)} /^[ \\t]*Vendor Name:/ {vendor=trim($2)} /^[ \\t]*Compute Unit:/ {cu=trim($2)} END{commit()}' || true`
+    `${buildRocminfoCommand()} | grep -E '^(Agent |[[:space:]]+Name:|[[:space:]]+Marketing Name:|[[:space:]]+Vendor Name:|[[:space:]]+Compute Unit:)' | sed 's/^/ROCRAW\\t/' || true`
   ].join(" ");
 }
 
@@ -1321,8 +1321,44 @@ function parseHyProductNames(output) {
   const lines = String(output || "").split(/\r?\n/);
   let currentIndex = null;
   let nextCuIndex = 0;
+  let rocAgent = null;
+  let rocGpuIndex = 0;
+
+  function commitRocAgent() {
+    if (!rocAgent) return;
+    const isGpu = /^gfx/i.test(rocAgent.name || "") || /^BW/i.test(rocAgent.marketing || "") || /C-3000|Chengdu/i.test(rocAgent.vendor || "");
+    if (isGpu && rocAgent.cuCount) {
+      const existing = byIndex.get(rocGpuIndex) || {};
+      byIndex.set(rocGpuIndex, {
+        ...existing,
+        model: existing.model || normalizeModelName(rocAgent.marketing) || normalizeModelName(rocAgent.name) || null,
+        vendor: existing.vendor || normalizeModelName(rocAgent.vendor) || null,
+        cuCount: rocAgent.cuCount
+      });
+      rocGpuIndex += 1;
+    }
+    rocAgent = null;
+  }
 
   for (const line of lines) {
+    if (line.startsWith("ROCRAW\t")) {
+      const raw = line.slice("ROCRAW\t".length);
+      if (/^Agent\s+/i.test(raw)) {
+        commitRocAgent();
+        rocAgent = {};
+        continue;
+      }
+      if (!rocAgent) rocAgent = {};
+      const parts = raw.split(":");
+      const key = normalizeSystemValue(parts[0]).toLowerCase();
+      const value = normalizeSystemValue(parts.slice(1).join(":"));
+      if (key === "name" && !rocAgent.name) rocAgent.name = value;
+      if (key === "marketing name") rocAgent.marketing = value;
+      if (key === "vendor name") rocAgent.vendor = value;
+      if (key === "compute unit") rocAgent.cuCount = parseNullableNumber(value);
+      continue;
+    }
+
     if (line === "__GPU_MONITOR_DCU_QUERY__" || line === "__GPU_MONITOR_ROCMINFO__") {
       currentIndex = null;
       continue;
@@ -1362,19 +1398,9 @@ function parseHyProductNames(output) {
       continue;
     }
 
-    const rocGpu = line.match(/^ROCGPU\t(\d+)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t(\d{1,4})/i);
-    if (rocGpu) {
-      const index = Number.parseInt(rocGpu[1], 10);
-      const existing = byIndex.get(index) || {};
-      byIndex.set(index, {
-        ...existing,
-        model: existing.model || normalizeModelName(rocGpu[3]) || normalizeModelName(rocGpu[2]) || null,
-        vendor: existing.vendor || normalizeModelName(rocGpu[4]) || null,
-        cuCount: Number.parseInt(rocGpu[5], 10)
-      });
-    }
   }
 
+  commitRocAgent();
   return byIndex;
 }
 
