@@ -527,6 +527,7 @@ async function mapWithConcurrency(items, limit, worker) {
 
 async function refreshServer(server, options = {}) {
   const includeModels = Boolean(options.includeModels);
+  const shouldRefreshGpuModels = includeModels || needsGpuModelRefresh(server);
   const started = Date.now();
   try {
     const [output, systemResult] = await Promise.all([
@@ -539,7 +540,7 @@ async function refreshServer(server, options = {}) {
     const system = systemResult.ok ? parseSystemOutput(systemResult.result.stdout) : { error: systemResult.error.message };
     let gpus = applySavedModels(parsed.gpus, server);
     let models = collectModels(gpus);
-    if (includeModels) {
+    if (shouldRefreshGpuModels) {
       try {
         const modelOutput = await runProbeCommand(server, buildModelCommand(server.command));
         const modelByIndex = parseModelOutput(modelOutput.stdout, server.command);
@@ -569,11 +570,11 @@ async function refreshServer(server, options = {}) {
       status.summary = `${busyCount}/${totalCount} 占用`;
     }
     statusCache.set(server.id, status);
-    if (server.gpuCount !== totalCount || includeModels) {
+    if (server.gpuCount !== totalCount || shouldRefreshGpuModels) {
       persistDetectedServerInfo(server.id, {
         gpuCount: totalCount,
-        models: includeModels ? models : undefined,
-        gpuModels: includeModels ? extractGpuModels(gpus) : undefined
+        models: shouldRefreshGpuModels ? models : undefined,
+        gpuModels: shouldRefreshGpuModels ? extractGpuModels(gpus) : undefined
       });
     }
     return { id: server.id, ok: true };
@@ -1534,16 +1535,31 @@ function collectModels(gpus) {
   return models;
 }
 
+function needsGpuModelRefresh(server) {
+  const count = Number.parseInt(server.gpuCount, 10) || 0;
+  if (!count) return false;
+  const saved = Array.isArray(server.gpuModels) ? server.gpuModels : [];
+  if (saved.length < count) return true;
+  const byIndex = new Map(saved.map((gpu) => [gpu.index, gpu]));
+  for (let index = 0; index < count; index += 1) {
+    const gpu = byIndex.get(index);
+    if (!gpu || !gpu.model) return true;
+    if (server.command !== "nvidia-smi" && !gpu.cuCount) return true;
+  }
+  return false;
+}
+
 function applySavedModels(gpus, server) {
   const savedByIndex = new Map((server.gpuModels || []).map((gpu) => [gpu.index, gpu]));
   const fallbackModel = (server.models || []).length === 1 ? server.models[0] : null;
   return gpus.map((gpu) => {
     const saved = savedByIndex.get(gpu.index) || {};
+    const model = gpu.model || saved.model || fallbackModel || null;
     return {
       ...gpu,
-      model: gpu.model || saved.model || fallbackModel || null,
+      model,
       vendor: gpu.vendor || saved.vendor || null,
-      cuCount: gpu.cuCount || saved.cuCount || null
+      cuCount: gpu.cuCount || saved.cuCount || inferCuCountFromModel(model)
     };
   });
 }
@@ -1551,13 +1567,22 @@ function applySavedModels(gpus, server) {
 function mergeGpuModels(gpus, modelByIndex) {
   return gpus.map((gpu) => {
     const detected = modelByIndex.get(gpu.index) || {};
+    const model = detected.model || gpu.model || null;
     return {
       ...gpu,
-      model: detected.model || gpu.model || null,
+      model,
       vendor: detected.vendor || gpu.vendor || null,
-      cuCount: detected.cuCount || gpu.cuCount || null
+      cuCount: detected.cuCount || gpu.cuCount || inferCuCountFromModel(model)
     };
   });
+}
+
+function inferCuCountFromModel(model) {
+  const text = normalizeModelName(model) || "";
+  if (/\bBW100\b/i.test(text)) return 64;
+  if (/\bBW150\b/i.test(text)) return 80;
+  if (/\bBW1000\b/i.test(text)) return 80;
+  return null;
 }
 
 function extractGpuModels(gpus) {

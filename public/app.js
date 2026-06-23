@@ -474,6 +474,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
     ),
     h("div", { className: "card-system-detail" },
       h("span", { title: cardCpuText(system) }, cardCpuText(system)),
+      h("span", { title: cardAcceleratorText(server, status, kind) }, cardAcceleratorText(server, status, kind)),
       h("span", { title: cardSystemText(system, server.command) }, cardSystemText(system, server.command))
     ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
@@ -653,6 +654,14 @@ function cardCpuText(system) {
   return `CPU ${model}`;
 }
 
+function cardAcceleratorText(server, status, kind) {
+  const label = kind === "nvidia" ? "GPU" : kind === "dcu" ? "DCU" : "加速卡";
+  const count = status.totalCount || server.gpuCount || 0;
+  const cuValues = uniqueValues((status.gpus || []).map((gpu) => gpu.cuCount).filter((value) => value));
+  const cuText = cuValues.length === 1 ? ` · ${cuValues[0]} CU` : cuValues.length > 1 ? ` · ${cuValues.join("/")} CU` : "";
+  return count ? `${label} ${count} 张${cuText}` : `${label} 识别中`;
+}
+
 function cardSystemText(system, command) {
   const os = shortSystemName(system.osName);
   const driver = system.driverVersion ? `${commandLabel(command)} ${system.driverVersion}` : "";
@@ -667,6 +676,10 @@ function shortSystemName(value) {
     .replace(/Linux Advanced Server/i, "LAS")
     .replace(/\(.*?\)/g, "")
     .trim();
+}
+
+function uniqueValues(values) {
+  return Array.from(new Set(values));
 }
 
 function cpuPages(system) {
