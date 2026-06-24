@@ -426,17 +426,19 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
   const status = server.status || {};
   const system = status.system || {};
   const assets = server.assets || {};
-  const kind = getServerKind(server);
-  const acceleratorKind = server.command === "nvidia-smi" ? "nvidia" : "dcu";
+  const acceleratorKind = server.command === "nvidia-smi" ? "gpu" : "dcu";
   const totalCount = status.totalCount || server.gpuCount || 0;
   const busyCount = status.busyCount || 0;
   const freeCount = Math.max(totalCount - busyCount, 0);
-  const busyPercent = totalCount ? Math.round(((status.busyCount || 0) / totalCount) * 100) : 0;
-  const deviceLabel = acceleratorKind === "nvidia" ? "GPU" : "DCU";
+  const busyPercent = totalCount ? Math.round((busyCount / totalCount) * 100) : 0;
+  const devices = status.gpus || [];
+  const machineState = cardMachineState(status, devices);
+  const deviceLabel = acceleratorKind.toUpperCase();
+  const statusColor = machineState === "busy" ? "#F59E0B" : machineState === "alert" ? "#EF4444" : machineState === "offline" ? "#94A3B8" : "#10B981";
+  const statusBg = machineState === "busy" ? "#FED7AA" : machineState === "alert" ? "#FECACA" : machineState === "offline" ? "#CBD5E1" : "#A7F3D0";
 
   return h("article", {
-    className: `server-card ${serverOccupancyClass(server)}${selected ? " selected" : ""}`,
-    style: { "--busy": `${busyPercent}%` },
+    className: `machine-card ${machineState}${selected ? " selected" : ""}`,
     tabIndex: 0,
     onClick: onSelect,
     onKeyDown: (event) => {
@@ -446,16 +448,21 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       }
     }
   },
-    h("div", { className: "card-topline" },
-      h("div", { className: "card-title-block" },
-        h("h3", null, server.name),
-        h("code", null, `${server.user ? `${server.user}@` : ""}${server.host}:${server.port}`)
+    h("div", { className: "card-header" },
+      h("div", { className: `machine-icon ${acceleratorKind}` }, deviceLabel),
+      h("div", { className: "title-block" },
+        h("h2", null, server.name),
+        h("div", { className: "ip" },
+          h("span", { className: `ping ${machineState === "offline" ? "danger" : machineState === "busy" ? "warn" : ""}` }),
+          `${server.user || "root"}@${server.host}:${server.port || 22}`
+        )
       ),
-      h("div", { className: "card-actions" },
-        h("span", { className: `status-pill status-${kind}` }, kindLabel(kind)),
+      h("div", { className: "actions" },
+        h("div", { className: `status-badge ${machineState}` }, machineStateLabel(machineState)),
         h("button", {
-          className: "icon-button edit-card",
+          className: "icon-btn",
           type: "button",
+          title: "编辑",
           "aria-label": "编辑服务器",
           onClick: (event) => {
             event.stopPropagation();
@@ -464,56 +471,76 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
         }, h(EditIcon))
       )
     ),
-    h("div", { className: `card-hero hero-${kind}` },
-      h("div", { className: "donut" },
-        h("div", { className: "donut-core" },
-          h("strong", null, totalCount ? `${busyCount}/${totalCount}` : "-"),
-          h("span", null, deviceLabel)
-        )
-      ),
+    h("div", { className: `hero ${machineState}` },
+      h(ProgressRing, { percent: busyPercent, color: statusColor, bgColor: statusBg, main: `${busyPercent}%`, sub: deviceLabel }),
       h("div", { className: "hero-info" },
-        h("span", null, "设备占用"),
-        h("strong", null, `${busyPercent}%`),
-        h("em", null, totalCount
-          ? busyCount
-            ? `已分配 ${busyCount} 张 · 空闲 ${freeCount} 张`
-            : "可立即分配资源"
-          : status.summary || "等待采集")
+        h("div", { className: "label" }, "设备占用"),
+        h("div", { className: "value" }, totalCount ? `${busyCount} / ${totalCount} 张` : "识别中"),
+        h("div", { className: "sub" }, totalCount ? (busyCount ? `已分配 ${busyCount} 张 · 空闲 ${freeCount} 张` : "可立即分配资源") : status.summary || "等待采集")
       )
     ),
-    h("div", { className: "system-summary" },
-      h(CardMetric, { label: "CPU", value: formatPercent(system.cpuUtilization), percent: system.cpuUtilization, meta: cardCpuCapacity(system) }),
-      h(CardMetric, { label: "内存", value: formatPercent(system.memoryUtilization), percent: system.memoryUtilization, meta: formatMemory(system.memoryUsedMiB, system.memoryTotalMiB) }),
-      h(CardMetric, { label: "温度", value: formatTemperature(system.cpuTemperatureC), percent: system.cpuTemperatureC, meta: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined ? "暂无数据" : "CPU 温度" })
+    h("div", { className: "quick-stats" },
+      h(QuickStat, { label: "CPU", value: formatPercent(system.cpuUtilization), extra: cardCpuCapacity(system), percent: system.cpuUtilization, color: metricColor(system.cpuUtilization) }),
+      h(QuickStat, { label: "内存", value: formatPercent(system.memoryUtilization), extra: formatMemoryCompact(system.memoryUsedMiB, system.memoryTotalMiB), percent: system.memoryUtilization, color: metricColor(system.memoryUtilization) }),
+      h(QuickStat, { label: "温度", value: formatTemperature(system.cpuTemperatureC), extra: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined ? "未接入" : "CPU 温度", percent: system.cpuTemperatureC, color: temperatureColor(system.cpuTemperatureC), empty: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined })
     ),
-    h("div", { className: "card-hardware-stack" },
-      h("div", { className: "card-hardware cpu-hardware" },
-        h("span", { className: "hardware-label" }, h(CpuIcon), "CPU"),
-        h("strong", { title: bestCpuModel(system) }, formatCpuModel(bestCpuModel(system))),
-        h("span", { className: "hardware-meta" }, cardCpuMeta(system))
+    h("div", { className: "hardware" },
+      h("div", { className: "hw-card" },
+        h("div", { className: "hw-header" }, "CPU"),
+        h("div", { className: "hw-name", title: bestCpuModel(system) }, formatCpuModel(bestCpuModel(system))),
+        h("div", { className: "hw-spec" }, cardCpuMeta(system))
       ),
-      h("div", { className: "card-hardware accelerator-hardware" },
-        h("span", { className: "hardware-label" }, h(AcceleratorIcon), acceleratorKind === "nvidia" ? "GPU" : "DCU"),
-        h("strong", { title: cardAcceleratorText(server, status, acceleratorKind) }, cardAcceleratorText(server, status, acceleratorKind)),
-        h("span", { className: "hardware-meta", title: cardAcceleratorMeta(server, system) }, cardAcceleratorMeta(server, system))
+      h("div", { className: `hw-card ${machineState === "offline" ? "" : machineState}` },
+        h("div", { className: "hw-header" }, deviceLabel),
+        h("div", { className: "hw-name", title: cardAcceleratorText(server, status, acceleratorKind) }, cardAcceleratorText(server, status, acceleratorKind)),
+        h("div", { className: "hw-spec", title: cardAcceleratorMeta(server, system) }, cardAcceleratorMeta(server, system))
       )
     ),
-    h("div", { className: "device-strip-head" },
-      h("strong", null, `${deviceLabel} 设备`),
-      h("span", { className: "device-legend" },
-        busyCount ? h("i", { className: "legend-busy" }, "运行") : null,
-        h("i", { className: "legend-idle" }, "空闲")
-      )
+    h("div", { className: "gpu-section" },
+      h("div", { className: "section-header" },
+        h("span", { className: "title" }, `${deviceLabel} 设备`),
+        h("span", { className: "legend" }, deviceLegends(devices, machineState).map((item) =>
+          h("span", { key: item.key }, h("span", { className: `dot ${item.key}` }), item.label)
+        ))
+      ),
+      h("div", { className: "gpu-grid" }, deviceCards(devices, totalCount, machineState))
     ),
-    h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
-    h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
-      h("span", null, h("small", null, "运行模型"), h("strong", null, assets.modelCount || 0)),
-      h("span", null, h("small", null, "镜像数"), h("strong", null, assets.dockerCount || 0)),
-      h("span", null, h("small", null, "已运行"), h("strong", null, formatCompactDuration(system.uptimeSeconds))),
-      h("em", { className: "heartbeat-time" }, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
+    h("div", { className: "footer" },
+      h("div", { className: "footer-stats" },
+        h(FooterStat, { type: "models", label: "模型数量", value: assets.modelCount || 0, icon: IconModel }),
+        h(FooterStat, { type: "images", label: "镜像数量", value: assets.dockerCount || 0, icon: IconImage }),
+        h(FooterStat, { type: "uptime", label: "运行时长", value: formatCompactDuration(system.uptimeSeconds), icon: IconClock })
+      ),
+      h("div", { className: "footer-bottom" },
+        h("div", { className: "spark-wrap" }, h("span", null, "当前卡负载"), h(Sparkline, { values: devices.map((gpu) => Math.max(normalizePercent(gpu.utilization), normalizePercent(gpu.memoryUtilization))), color: machineState === "alert" ? "danger" : machineState === "busy" ? "warning" : "success" })),
+        h("div", { className: `heartbeat ${machineState === "offline" ? "fail" : machineState === "alert" ? "danger" : machineState === "busy" ? "warn" : ""}` }, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
+      )
     )
   );
 });
+
+function ProgressRing({ percent, color, bgColor, main, sub }) {
+  const size = 88;
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - normalizePercent(percent) / 100);
+  return h("div", { className: "progress-ring", style: { width: `${size}px`, height: `${size}px` } },
+    h("svg", { width: size, height: size },
+      h("circle", { cx: 44, cy: 44, r: radius, className: "ring-bg", stroke: bgColor }),
+      h("circle", { cx: 44, cy: 44, r: radius, className: "ring-fg", stroke: color, strokeDasharray: circumference, strokeDashoffset: offset })
+    ),
+    h("div", { className: "ring-num" }, h("span", { className: "main", style: { color } }, main), h("span", { className: "sub" }, sub))
+  );
+}
+
+function QuickStat({ label, value, extra, percent, color, empty }) {
+  return h("div", { className: "quick-stat" },
+    h("div", { className: "label" }, label),
+    h("div", { className: `value ${empty ? "empty" : color || ""}` }, value),
+    h("div", { className: "extra" }, extra),
+    !empty && percent !== null && percent !== undefined ? h("div", { className: "bar" }, h("div", { className: color || "normal", style: { width: `${normalizePercent(percent)}%` } })) : null
+  );
+}
 
 function EditIcon() {
   return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
@@ -522,53 +549,57 @@ function EditIcon() {
   );
 }
 
-function CpuIcon() {
-  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", "aria-hidden": "true" },
-    h("rect", { x: "4", y: "4", width: "16", height: "16", rx: "2" }),
-    h("rect", { x: "9", y: "9", width: "6", height: "6" })
-  );
-}
-
-function AcceleratorIcon() {
-  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinejoin: "round", "aria-hidden": "true" },
-    h("polygon", { points: "13 2 3 14 12 14 11 22 21 10 12 10 13 2" })
-  );
-}
-
-function CardMetric({ label, value, percent, meta }) {
-  return h("div", { className: "card-metric" },
-    h("span", null, label),
-    h("strong", null, value),
-    h("i", null, h("b", { style: { width: `${normalizePercent(percent)}%` } })),
-    h("em", { title: meta }, meta)
-  );
-}
-
-function gpuSlots(gpus, count, serverKind) {
+function deviceCards(gpus, count, machineState) {
   const list = gpus.length ? gpus : Array.from({ length: count }, (_, index) => ({ index, state: "unknown" }));
   return list.slice(0, count || 0).map((gpu) => {
-    const cls = serverKind === "offline" ? "offline" : gpu.state || "unknown";
-    const chipLevel = gpuOccupancyClass(gpu);
     const vram = normalizePercent(gpu.memoryUtilization);
     const compute = normalizePercent(gpu.utilization);
     const peak = Math.max(vram, compute);
-    return h("span", { className: `slot ${cls} ${chipLevel}`, key: gpu.index, title: `#${gpu.index} 显存 ${formatPercent(gpu.memoryUtilization)} 算力 ${formatPercent(gpu.utilization)} 温度 ${formatTemperature(gpu.temperatureC)} 功耗 ${formatPower(gpu.powerW)}` },
-      h("b", null, `#${gpu.index}`),
-      h("span", { className: "slot-main" },
-        h("strong", null, `${peak}%`),
-        h("em", null, gpuCardSub(gpu))
+    const state = machineState === "offline" ? "offline" : Number(gpu.temperatureC) >= 85 ? "alert" : gpu.state === "busy" || peak >= 10 ? "busy" : "idle";
+    const memoryUsed = Number(gpu.memoryUsedMiB);
+    const memoryTotal = Number(gpu.memoryTotalMiB);
+    const memoryPercent = Number.isFinite(memoryTotal) && memoryTotal > 0 ? normalizePercent((memoryUsed / memoryTotal) * 100) : vram;
+    return h("div", { className: `gpu-card ${state === "idle" ? "" : state}`, key: gpu.index },
+      h("div", { className: "gpu-row1" }, h("div", { className: "gpu-id" }, `#${gpu.index}`), h("div", { className: "gpu-util" }, `${peak}%`)),
+      h("div", { className: "gpu-row2" },
+        h("span", { className: "gpu-temp" }, h("span", { className: `temp-icon ${temperatureClass(gpu.temperatureC)}` }), formatTemperature(gpu.temperatureC)),
+        h("span", null, state === "alert" ? "异常" : state === "busy" ? "活跃" : state === "offline" ? "离线" : "待机")
       ),
-      h("i", { "aria-hidden": "true" })
+      h("div", { className: "gpu-mem" },
+        h("div", { className: "mem-bar" }, h("div", { style: { width: `${memoryPercent}%` } })),
+        h("span", { className: "mem-text" }, memoryText(gpu))
+      )
     );
   });
 }
 
-function gpuCardSub(gpu) {
-  const temperature = formatTemperature(gpu.temperatureC);
-  const memory = gpu.memoryTotalMiB
-    ? `${formatGiB(gpu.memoryUsedMiB || 0)}/${formatGiB(gpu.memoryTotalMiB)}`
-    : formatPower(gpu.powerW);
-  return [temperature, memory].filter((value) => value !== "-").join(" · ") || "暂无传感器数据";
+function FooterStat({ type, label, value, icon }) {
+  return h("div", { className: "footer-stat" },
+    h("div", { className: `icon ${type}` }, h(icon)),
+    h("div", { className: "info" }, h("div", { className: "label" }, label), h("div", { className: `value ${value === 0 ? "zero" : ""}` }, value))
+  );
+}
+
+function IconModel() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, h("path", { d: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }));
+}
+
+function IconImage() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, h("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }), h("circle", { cx: "8.5", cy: "8.5", r: "1.5" }), h("polyline", { points: "21 15 16 10 5 21" }));
+}
+
+function IconClock() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" }, h("circle", { cx: "12", cy: "12", r: "10" }), h("polyline", { points: "12 6 12 12 16 14" }));
+}
+
+function Sparkline({ values, color }) {
+  const safe = values && values.length > 1 ? values : [0, 0];
+  const width = 80;
+  const height = 20;
+  const max = Math.max.apply(null, safe.concat([1]));
+  const points = safe.map((value, index) => `${(index / Math.max(1, safe.length - 1)) * width},${height - (normalizePercent(value) / max) * 16 - 2}`).join(" ");
+  const stroke = color === "danger" ? "#EF4444" : color === "warning" ? "#F59E0B" : "#10B981";
+  return h("svg", { width, height, viewBox: `0 0 ${width} ${height}` }, h("polyline", { points, fill: "none", stroke, strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
 
 function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClose }) {
@@ -741,11 +772,68 @@ function cardCpuCapacity(system) {
 }
 
 function cardAcceleratorText(server, status, kind) {
-  const label = kind === "nvidia" ? "GPU" : kind === "dcu" ? "DCU" : "加速卡";
+  const label = kind === "nvidia" || kind === "gpu" ? "GPU" : kind === "dcu" ? "DCU" : "加速卡";
   const count = status.totalCount || server.gpuCount || 0;
   const cuValues = uniqueValues((status.gpus || []).map((gpu) => gpu.cuCount).filter((value) => value));
   const cuText = cuValues.length === 1 ? ` · ${cuValues[0]} CU` : cuValues.length > 1 ? ` · ${cuValues.join("/")} CU` : "";
   return count ? `${label} ${count} 张${cuText}` : `${label} 识别中`;
+}
+
+function cardMachineState(status, devices) {
+  if (status.state === "offline") return "offline";
+  if ((devices || []).some((gpu) => Number(gpu.temperatureC) >= 85)) return "alert";
+  if ((status.busyCount || 0) > 0) return "busy";
+  return "idle";
+}
+
+function machineStateLabel(state) {
+  return state === "busy" ? "占用中" : state === "alert" ? "告警" : state === "offline" ? "离线" : "空闲";
+}
+
+function deviceLegends(devices, machineState) {
+  if (machineState === "offline") return [{ key: "offline", label: "离线" }];
+  const hasAlert = (devices || []).some((gpu) => Number(gpu.temperatureC) >= 85);
+  const hasBusy = (devices || []).some((gpu) => gpu.state === "busy" || Math.max(normalizePercent(gpu.utilization), normalizePercent(gpu.memoryUtilization)) >= 10);
+  if (!hasAlert && !hasBusy) return [{ key: "idle", label: "空闲" }];
+  return [hasBusy ? { key: "busy", label: "运行" } : null, hasAlert ? { key: "alert", label: "异常" } : null].filter(Boolean);
+}
+
+function metricColor(value) {
+  const percent = normalizePercent(value);
+  if (percent >= 80) return "danger";
+  if (percent >= 60) return "warning";
+  if (percent <= 20) return "success";
+  return "normal";
+}
+
+function temperatureColor(value) {
+  const temperature = Number(value);
+  if (!Number.isFinite(temperature)) return "";
+  if (temperature >= 85) return "danger";
+  if (temperature >= 70) return "warning";
+  return "success";
+}
+
+function temperatureClass(value) {
+  const temperature = Number(value);
+  if (!Number.isFinite(temperature)) return "";
+  if (temperature >= 85) return "hot";
+  if (temperature >= 70) return "warm";
+  return "";
+}
+
+function formatMemoryCompact(usedMiB, totalMiB) {
+  const used = Number(usedMiB);
+  const total = Number(totalMiB);
+  if (!Number.isFinite(total) || total <= 0) return "未接入";
+  return `${Math.round(used / 1024)} / ${Math.round(total / 1024)} GB`;
+}
+
+function memoryText(gpu) {
+  const used = Number(gpu.memoryUsedMiB);
+  const total = Number(gpu.memoryTotalMiB);
+  if (!Number.isFinite(total) || total <= 0) return formatPower(gpu.powerW);
+  return `${Math.round((Number.isFinite(used) ? used : 0) / 1024)}/${Math.round(total / 1024)}G`;
 }
 
 function cardSystemText(system, command) {
