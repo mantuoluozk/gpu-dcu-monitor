@@ -736,3 +736,287 @@
     width: min(100%, 372px);
   }
 }
+
+/* Compact overview layout: keep v2 colors and motion, fit three cards per row. */
+.server-grid {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+  min-height: 480px;
+}
+
+.machine-card {
+  width: 100%;
+  min-width: 0;
+}
+
+.machine-card .card-header {
+  gap: 9px;
+  padding: 12px 13px 11px;
+}
+
+.machine-card .machine-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  font-size: 11px;
+}
+
+.machine-card .title-block h2 {
+  font-size: 14px;
+}
+
+.machine-card .ip {
+  font-size: 9px;
+}
+
+.machine-card .status-badge {
+  padding: 3px 8px;
+  font-size: 10px;
+}
+
+.machine-card .icon-btn {
+  width: 27px;
+  height: 27px;
+}
+
+.machine-card .hero {
+  display: grid;
+  grid-template-columns: 68px minmax(74px, 1fr) minmax(100px, 0.9fr);
+  gap: 10px;
+  padding: 14px 13px;
+}
+
+.machine-card .progress-ring {
+  width: 68px !important;
+  height: 68px !important;
+}
+
+.machine-card .progress-ring svg {
+  width: 68px;
+  height: 68px;
+}
+
+.machine-card .ring-num .main {
+  font-size: 17px;
+}
+
+.machine-card .ring-num .sub {
+  font-size: 7px;
+}
+
+.machine-card .hero-info .label {
+  margin-bottom: 3px;
+  font-size: 9px;
+}
+
+.machine-card .hero-info .value {
+  margin-bottom: 3px;
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+.machine-card .hero-info .sub {
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.machine-card .hero-hardware {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.machine-card .hero-hw {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1px 5px;
+  min-width: 0;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  padding: 6px 7px;
+}
+
+.machine-card .hero-hw span {
+  align-self: start;
+  color: #475569;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.machine-card .hero-hw strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.machine-card .hero-hw em {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 7px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.machine-card .hero-hw.accelerator.busy {
+  border-color: #fde68a;
+  background: rgba(255, 251, 235, 0.82);
+}
+
+.machine-card .hero-hw.accelerator.alert {
+  border-color: #fecaca;
+  background: rgba(254, 242, 242, 0.82);
+}
+
+.machine-card .hero-hw.accelerator.idle {
+  border-color: #a7f3d0;
+  background: rgba(236, 253, 245, 0.82);
+}
+
+.machine-card .quick-stat {
+  padding: 9px 6px 8px;
+}
+
+.machine-card .quick-stat .label {
+  margin-bottom: 3px;
+  font-size: 8px;
+}
+
+.machine-card .quick-stat .value {
+  font-size: 13px;
+}
+
+.machine-card .quick-stat .extra {
+  margin-top: 2px;
+  font-size: 7px;
+}
+
+.machine-card .quick-stat .bar {
+  margin-top: 4px;
+}
+
+.machine-card .gpu-section {
+  padding: 10px 12px 9px;
+}
+
+.machine-card .section-header {
+  margin-bottom: 7px;
+}
+
+.machine-card .section-header .title {
+  font-size: 9px;
+}
+
+.machine-card .legend {
+  gap: 6px;
+  font-size: 7px;
+}
+
+.machine-card .gpu-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.machine-card .gpu-card {
+  padding: 6px 6px 5px;
+}
+
+.machine-card .gpu-row1 {
+  margin-bottom: 3px;
+}
+
+.machine-card .gpu-id {
+  font-size: 7px;
+}
+
+.machine-card .gpu-util {
+  font-size: 11px;
+}
+
+.machine-card .gpu-row2 {
+  margin-bottom: 3px;
+  font-size: 7px;
+}
+
+.machine-card .gpu-row2 > span:last-child {
+  display: none;
+}
+
+.machine-card .temp-icon {
+  width: 6px;
+  height: 6px;
+}
+
+.machine-card .mem-text {
+  max-width: 36px;
+  overflow: hidden;
+  font-size: 6px;
+  text-overflow: ellipsis;
+}
+
+.machine-card .footer {
+  padding: 9px 12px;
+}
+
+.machine-card .footer-stats {
+  margin-bottom: 7px;
+}
+
+.machine-card .footer-stat {
+  gap: 5px;
+}
+
+.machine-card .footer-stat .icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.machine-card .footer-stat svg {
+  width: 11px;
+  height: 11px;
+}
+
+.machine-card .footer-stat .label {
+  font-size: 7px;
+}
+
+.machine-card .footer-stat .value {
+  font-size: 11px;
+}
+
+.machine-card .footer-bottom {
+  padding-top: 7px;
+}
+
+.machine-card .spark-wrap {
+  gap: 4px;
+  font-size: 7px;
+}
+
+.machine-card .spark-wrap svg {
+  width: 62px;
+  height: 16px;
+}
+
+.machine-card .heartbeat {
+  font-size: 8px;
+}
+
+@media (max-width: 900px) {
+  .server-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .machine-card {
+    width: 100%;
+  }
+}

@@ -477,24 +477,24 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
         h("div", { className: "label" }, "设备占用"),
         h("div", { className: "value" }, totalCount ? `${busyCount} / ${totalCount} 张` : "识别中"),
         h("div", { className: "sub" }, totalCount ? (busyCount ? `已分配 ${busyCount} 张 · 空闲 ${freeCount} 张` : "可立即分配资源") : status.summary || "等待采集")
+      ),
+      h("div", { className: "hero-hardware" },
+        h("div", { className: "hero-hw cpu", title: `${formatCpuModel(bestCpuModel(system))} · ${cardCpuMeta(system)}` },
+          h("span", null, "CPU"),
+          h("strong", null, compactCpuModel(system)),
+          h("em", null, cardCpuCapacity(system))
+        ),
+        h("div", { className: `hero-hw accelerator ${machineState}`, title: `${cardAcceleratorText(server, status, acceleratorKind)} · ${cardAcceleratorMeta(server, system)}` },
+          h("span", null, deviceLabel),
+          h("strong", null, compactAcceleratorText(status, totalCount, deviceLabel)),
+          h("em", null, compactSystemText(system))
+        )
       )
     ),
     h("div", { className: "quick-stats" },
       h(QuickStat, { label: "CPU", value: formatPercent(system.cpuUtilization), extra: cardCpuCapacity(system), percent: system.cpuUtilization, color: metricColor(system.cpuUtilization) }),
       h(QuickStat, { label: "内存", value: formatPercent(system.memoryUtilization), extra: formatMemoryCompact(system.memoryUsedMiB, system.memoryTotalMiB), percent: system.memoryUtilization, color: metricColor(system.memoryUtilization) }),
       h(QuickStat, { label: "温度", value: formatTemperature(system.cpuTemperatureC), extra: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined ? "未接入" : "CPU 温度", percent: system.cpuTemperatureC, color: temperatureColor(system.cpuTemperatureC), empty: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined })
-    ),
-    h("div", { className: "hardware" },
-      h("div", { className: "hw-card" },
-        h("div", { className: "hw-header" }, "CPU"),
-        h("div", { className: "hw-name", title: bestCpuModel(system) }, formatCpuModel(bestCpuModel(system))),
-        h("div", { className: "hw-spec" }, cardCpuMeta(system))
-      ),
-      h("div", { className: `hw-card ${machineState === "offline" ? "" : machineState}` },
-        h("div", { className: "hw-header" }, deviceLabel),
-        h("div", { className: "hw-name", title: cardAcceleratorText(server, status, acceleratorKind) }, cardAcceleratorText(server, status, acceleratorKind)),
-        h("div", { className: "hw-spec", title: cardAcceleratorMeta(server, system) }, cardAcceleratorMeta(server, system))
-      )
     ),
     h("div", { className: "gpu-section" },
       h("div", { className: "section-header" },
@@ -531,6 +531,25 @@ function ProgressRing({ percent, color, bgColor, main, sub }) {
     ),
     h("div", { className: "ring-num" }, h("span", { className: "main", style: { color } }, main), h("span", { className: "sub" }, sub))
   );
+}
+
+function compactCpuModel(system) {
+  const model = formatCpuModel(bestCpuModel(system));
+  const opn = model.match(/\bOPN\s+([A-Z0-9-]+)/i);
+  const numbered = model.match(/\b(?:C86[-\s\w]*?\s)?(\d{4})\b/);
+  if (opn) return `Hygon ${opn[1]}`;
+  if (numbered) return `Hygon ${numbered[1]}`;
+  return model.replace(/\s+x\d+$/i, "").replace(/\s+\d+-core Processor/i, "");
+}
+
+function compactAcceleratorText(status, totalCount, label) {
+  const cuValues = uniqueValues((status.gpus || []).map((gpu) => gpu.cuCount).filter(Boolean));
+  const cu = cuValues.length === 1 ? ` · ${cuValues[0]} CU` : "";
+  return `${totalCount || "-"} 张 ${label}${cu}`;
+}
+
+function compactSystemText(system) {
+  return shortSystemName(system.osName) || (system.driverVersion ? `驱动 ${system.driverVersion}` : "系统识别中");
 }
 
 function QuickStat({ label, value, extra, percent, color, empty }) {
