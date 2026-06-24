@@ -2464,6 +2464,151 @@ select:focus {
   }
 }
 
+/* Compact dashboard chrome for laptop screens. */
+.top-rail {
+  grid-template-columns: minmax(180px, 0.72fr) auto minmax(240px, 1.35fr) auto;
+  gap: 7px;
+  padding: 7px 9px;
+}
+
+.page-title .eyebrow {
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.page-title h2 {
+  margin-top: 1px;
+  font-size: 20px;
+}
+
+.view-tabs {
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.view-tab {
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+.search-box,
+.search-box span,
+.search-box input {
+  min-height: 31px;
+}
+
+.search-box span {
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.search-box input {
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.top-actions {
+  gap: 5px;
+}
+
+.primary-action,
+.ghost-action {
+  min-height: 31px;
+  border-radius: 8px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+.dashboard-view {
+  gap: 5px;
+  padding: 6px 9px 9px;
+}
+
+.hero-board {
+  grid-template-columns: minmax(220px, 0.82fr) 1.35fr;
+  gap: 6px;
+}
+
+.hero-main {
+  min-height: 58px;
+  border-radius: 8px;
+  padding: 8px 11px;
+}
+
+.hero-main::after {
+  inset: 8px 11px auto auto;
+  width: 92px;
+  height: 34px;
+}
+
+.hero-main span {
+  font-size: 9px;
+}
+
+.hero-main strong {
+  margin-top: 3px;
+  font-size: 25px;
+}
+
+.hero-main em {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.stat-strip {
+  gap: 6px;
+}
+
+.stat-tile {
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.stat-tile span {
+  font-size: 10px;
+}
+
+.stat-tile strong {
+  margin-top: 3px;
+  font-size: 21px;
+}
+
+.group-panel {
+  gap: 5px;
+}
+
+.group-filter {
+  min-height: 26px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+@media (max-width: 1180px) {
+  .top-rail {
+    grid-template-columns: minmax(180px, 0.8fr) auto minmax(220px, 1fr) auto;
+  }
+
+  .top-actions {
+    justify-content: flex-end;
+  }
+
+  .top-actions > button {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 980px) {
+  .top-rail {
+    grid-template-columns: minmax(170px, 1fr) auto auto;
+  }
+
+  .search-box {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 @media (max-width: 520px) {
   .slot-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

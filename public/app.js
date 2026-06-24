@@ -525,7 +525,7 @@ function ProgressRing({ percent, color, bgColor, main, sub }) {
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - normalizePercent(percent) / 100);
   return h("div", { className: "progress-ring", style: { width: `${size}px`, height: `${size}px` } },
-    h("svg", { width: size, height: size },
+    h("svg", { width: size, height: size, viewBox: "0 0 88 88" },
       h("circle", { cx: 44, cy: 44, r: radius, className: "ring-bg", stroke: bgColor }),
       h("circle", { cx: 44, cy: 44, r: radius, className: "ring-fg", stroke: color, strokeDasharray: circumference, strokeDashoffset: offset })
     ),

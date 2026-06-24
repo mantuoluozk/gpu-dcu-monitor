@@ -781,42 +781,43 @@
 
 .machine-card .hero {
   display: grid;
-  grid-template-columns: 68px minmax(74px, 1fr) minmax(100px, 0.9fr);
-  gap: 10px;
-  padding: 14px 13px;
+  grid-template-columns: 58px minmax(70px, 0.72fr) minmax(128px, 1.28fr);
+  gap: 8px;
+  padding: 12px;
 }
 
 .machine-card .progress-ring {
-  width: 68px !important;
-  height: 68px !important;
+  width: 58px !important;
+  height: 58px !important;
 }
 
 .machine-card .progress-ring svg {
-  width: 68px;
-  height: 68px;
+  width: 58px;
+  height: 58px;
+  overflow: visible;
 }
 
 .machine-card .ring-num .main {
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .machine-card .ring-num .sub {
-  font-size: 7px;
+  font-size: 6px;
 }
 
 .machine-card .hero-info .label {
   margin-bottom: 3px;
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .machine-card .hero-info .value {
   margin-bottom: 3px;
-  font-size: 17px;
+  font-size: 16px;
   white-space: nowrap;
 }
 
 .machine-card .hero-info .sub {
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1.3;
 }
 
@@ -834,13 +835,13 @@
   border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.68);
-  padding: 6px 7px;
+  padding: 6px 8px;
 }
 
 .machine-card .hero-hw span {
   align-self: start;
   color: #475569;
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
@@ -849,7 +850,7 @@
   min-width: 0;
   overflow: hidden;
   color: #0f172a;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -860,7 +861,7 @@
   min-width: 0;
   overflow: hidden;
   color: #64748b;
-  font-size: 7px;
+  font-size: 8px;
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
