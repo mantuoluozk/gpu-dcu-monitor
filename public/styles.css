@@ -1224,6 +1224,8 @@ code {
 
 .slot-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 48px;
+  align-content: start;
   gap: 6px;
   border: 0;
   border-radius: 0;
@@ -1341,14 +1343,17 @@ code {
 
 /* Fidelity pass: match C:\Users\zhengke\Desktop\index.html. */
 .server-grid {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 326px), 1fr));
-  grid-auto-rows: minmax(540px, max-content);
-  gap: 10px;
-  min-height: 540px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 324px), 360px));
+  grid-auto-rows: minmax(632px, max-content);
+  justify-content: start;
+  gap: 12px;
+  min-height: 632px;
 }
 
 .server-card,
 .server-card.selected {
+  width: 100%;
+  max-width: 360px;
   overflow: hidden;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
@@ -1413,6 +1418,11 @@ code {
   border-color: #e2e8f0;
   background: #fff;
   color: #475569;
+}
+
+.edit-card svg {
+  width: 14px;
+  height: 14px;
 }
 
 .edit-card:hover {
@@ -1533,9 +1543,17 @@ code {
 }
 
 .hardware-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: #475569;
   font-size: 9px;
   letter-spacing: 0.5px;
+}
+
+.hardware-label svg {
+  width: 11px;
+  height: 11px;
 }
 
 .card-hardware strong {
@@ -1570,40 +1588,39 @@ code {
 }
 
 .slot-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  min-height: 110px;
-  padding: 0 15px 11px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 222px;
+  padding: 0 15px 12px;
 }
 
 .slot {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 6px;
-  gap: 2px 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  min-height: 50px;
+  min-height: 48px;
   border-color: #e2e8f0;
   border-radius: 8px;
   padding: 6px 7px;
 }
 
 .slot > b {
-  grid-column: 1;
-  grid-row: 1;
-  flex: none;
+  flex: 0 0 20px;
   color: #94a3b8;
   font-size: 8px;
 }
 
 .slot-main {
-  grid-column: 1;
-  grid-row: 2;
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 2px;
 }
 
 .slot-main strong {
   color: #0f172a;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1613,9 +1630,7 @@ code {
 }
 
 .slot > i {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  align-self: center;
+  flex: 0 0 6px;
 }
 
 .slot.level-low .slot-main strong {
@@ -1630,8 +1645,8 @@ code {
 .asset-summary {
   grid-template-columns: auto auto auto minmax(0, 1fr);
   gap: 14px;
-  min-height: 53px;
-  padding: 10px 15px;
+  min-height: 55px;
+  padding: 10px 15px 11px;
 }
 
 .asset-summary small {
@@ -1649,6 +1664,28 @@ code {
 .asset-summary em {
   color: #475569;
   font-size: 9px;
+}
+
+.heartbeat-time::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: #10b981;
+  vertical-align: 1px;
+  animation: card-heartbeat-pulse 2s infinite;
+}
+
+@keyframes card-heartbeat-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .icon-button {

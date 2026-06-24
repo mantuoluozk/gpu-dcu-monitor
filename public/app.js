@@ -461,7 +461,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
             event.stopPropagation();
             onEdit();
           }
-        }, "✎")
+        }, h(EditIcon))
       )
     ),
     h("div", { className: `card-hero hero-${kind}` },
@@ -488,12 +488,12 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
     ),
     h("div", { className: "card-hardware-stack" },
       h("div", { className: "card-hardware cpu-hardware" },
-        h("span", { className: "hardware-label" }, "CPU"),
+        h("span", { className: "hardware-label" }, h(CpuIcon), "CPU"),
         h("strong", { title: bestCpuModel(system) }, formatCpuModel(bestCpuModel(system))),
         h("span", { className: "hardware-meta" }, cardCpuMeta(system))
       ),
       h("div", { className: "card-hardware accelerator-hardware" },
-        h("span", { className: "hardware-label" }, acceleratorKind === "nvidia" ? "GPU" : "DCU"),
+        h("span", { className: "hardware-label" }, h(AcceleratorIcon), acceleratorKind === "nvidia" ? "GPU" : "DCU"),
         h("strong", { title: cardAcceleratorText(server, status, acceleratorKind) }, cardAcceleratorText(server, status, acceleratorKind)),
         h("span", { className: "hardware-meta", title: cardAcceleratorMeta(server, system) }, cardAcceleratorMeta(server, system))
       )
@@ -507,13 +507,33 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
     ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
     h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
-      h("span", null, h("small", null, "模型"), h("strong", null, assets.modelCount || 0)),
-      h("span", null, h("small", null, "镜像"), h("strong", null, assets.dockerCount || 0)),
+      h("span", null, h("small", null, "运行模型"), h("strong", null, assets.modelCount || 0)),
+      h("span", null, h("small", null, "镜像数"), h("strong", null, assets.dockerCount || 0)),
       h("span", null, h("small", null, "已运行"), h("strong", null, formatCompactDuration(system.uptimeSeconds))),
-      h("em", null, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
+      h("em", { className: "heartbeat-time" }, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
     )
   );
 });
+
+function EditIcon() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
+    h("path", { d: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" }),
+    h("path", { d: "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" })
+  );
+}
+
+function CpuIcon() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", "aria-hidden": "true" },
+    h("rect", { x: "4", y: "4", width: "16", height: "16", rx: "2" }),
+    h("rect", { x: "9", y: "9", width: "6", height: "6" })
+  );
+}
+
+function AcceleratorIcon() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinejoin: "round", "aria-hidden": "true" },
+    h("polygon", { points: "13 2 3 14 12 14 11 22 21 10 12 10 13 2" })
+  );
+}
 
 function CardMetric({ label, value, percent, meta }) {
   return h("div", { className: "card-metric" },
