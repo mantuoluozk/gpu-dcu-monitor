@@ -762,11 +762,13 @@
 }
 
 .machine-card .title-block h2 {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .machine-card .ip {
-  font-size: 9px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .machine-card .status-badge {
@@ -781,7 +783,7 @@
 
 .machine-card .hero {
   display: grid;
-  grid-template-columns: 58px minmax(70px, 0.72fr) minmax(128px, 1.28fr);
+  grid-template-columns: 58px minmax(62px, 0.55fr) minmax(142px, 1.45fr);
   gap: 8px;
   padding: 12px;
 }
@@ -807,18 +809,20 @@
 
 .machine-card .hero-info .label {
   margin-bottom: 3px;
-  font-size: 8px;
+  color: #334155;
+  font-size: 9px;
 }
 
 .machine-card .hero-info .value {
   margin-bottom: 3px;
-  font-size: 16px;
+  font-size: 17px;
   white-space: nowrap;
 }
 
 .machine-card .hero-info .sub {
-  font-size: 8px;
-  line-height: 1.3;
+  color: #475569;
+  font-size: 9px;
+  line-height: 1.35;
 }
 
 .machine-card .hero-hardware {
@@ -829,40 +833,60 @@
 
 .machine-card .hero-hw {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 1px 5px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
   min-width: 0;
   border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.68);
-  padding: 6px 8px;
+  padding: 7px 8px;
 }
 
-.machine-card .hero-hw span {
-  align-self: start;
-  color: #475569;
+.machine-card .hero-hw .hw-type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  border-radius: 5px;
+  background: #dbeafe;
+  color: #1d4ed8;
   font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
-.machine-card .hero-hw strong {
+.machine-card .hero-hw.accelerator .hw-type {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.machine-card .hero-hw .hw-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.machine-card .hero-hw .hw-copy strong {
   min-width: 0;
   overflow: hidden;
   color: #0f172a;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.machine-card .hero-hw em {
-  grid-column: 1 / -1;
+.machine-card .hero-hw .hw-copy em {
   min-width: 0;
   overflow: hidden;
-  color: #64748b;
-  font-size: 8px;
+  color: #475569;
+  font-size: 9.5px;
+  font-weight: 600;
   font-style: normal;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -888,16 +912,19 @@
 
 .machine-card .quick-stat .label {
   margin-bottom: 3px;
-  font-size: 8px;
+  color: #475569;
+  font-size: 9px;
 }
 
 .machine-card .quick-stat .value {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .machine-card .quick-stat .extra {
   margin-top: 2px;
-  font-size: 7px;
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 600;
 }
 
 .machine-card .quick-stat .bar {
@@ -913,48 +940,9 @@
 }
 
 .machine-card .section-header .title {
-  font-size: 9px;
-}
-
-.machine-card .telemetry-strip {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  min-width: 0;
-}
-
-.machine-card .telemetry-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 16px;
-  border: 1px solid #dbeafe;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #2563eb;
-  padding: 1px 5px;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 7px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.machine-card .telemetry-chip.complete {
-  border-color: #a7f3d0;
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.machine-card .telemetry-chip.partial {
-  border-color: #fde68a;
-  background: #fffbeb;
-  color: #b45309;
-}
-
-.machine-card .telemetry-chip.unavailable {
-  border-color: #fed7aa;
-  background: #fff7ed;
-  color: #c2410c;
+  color: #334155;
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .machine-card .legend {
@@ -976,16 +964,19 @@
 }
 
 .machine-card .gpu-id {
-  font-size: 7px;
+  color: #64748b;
+  font-size: 8px;
 }
 
 .machine-card .gpu-util {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .machine-card .gpu-row2 {
   margin-bottom: 3px;
-  font-size: 7px;
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 600;
 }
 
 .machine-card .gpu-row2 > span:last-child {
@@ -998,9 +989,11 @@
 }
 
 .machine-card .mem-text {
-  max-width: 36px;
+  max-width: 40px;
   overflow: hidden;
-  font-size: 6px;
+  color: #64748b;
+  font-size: 7px;
+  font-weight: 600;
   text-overflow: ellipsis;
 }
 
@@ -1028,11 +1021,13 @@
 }
 
 .machine-card .footer-stat .label {
-  font-size: 7px;
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 700;
 }
 
 .machine-card .footer-stat .value {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .machine-card .footer-bottom {
@@ -1041,7 +1036,9 @@
 
 .machine-card .spark-wrap {
   gap: 4px;
-  font-size: 7px;
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 700;
 }
 
 .machine-card .spark-wrap svg {
@@ -1050,7 +1047,9 @@
 }
 
 .machine-card .heartbeat {
-  font-size: 8px;
+  color: #334155;
+  font-size: 9px;
+  font-weight: 600;
 }
 
 @media (max-width: 900px) {

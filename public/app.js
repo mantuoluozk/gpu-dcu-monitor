@@ -480,14 +480,18 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       ),
       h("div", { className: "hero-hardware" },
         h("div", { className: "hero-hw cpu", title: `${formatCpuModel(bestCpuModel(system))} · ${cardCpuMeta(system)}` },
-          h("span", null, "CPU"),
-          h("strong", null, compactCpuModel(system)),
-          h("em", null, cardCpuCapacity(system))
+          h("span", { className: "hw-type" }, "CPU"),
+          h("div", { className: "hw-copy" },
+            h("strong", null, compactCpuModel(system)),
+            h("em", null, cardCpuCapacity(system))
+          )
         ),
         h("div", { className: `hero-hw accelerator ${machineState}`, title: `${cardAcceleratorText(server, status, acceleratorKind)} · ${cardAcceleratorMeta(server, system)}` },
-          h("span", null, deviceLabel),
-          h("strong", null, compactAcceleratorText(status, totalCount, deviceLabel)),
-          h("em", null, compactSystemText(system))
+          h("span", { className: "hw-type" }, deviceLabel),
+          h("div", { className: "hw-copy" },
+            h("strong", null, compactAcceleratorText(status, totalCount, deviceLabel)),
+            h("em", null, compactSystemText(system))
+          )
         )
       )
     ),
@@ -498,8 +502,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
     ),
     h("div", { className: "gpu-section" },
       h("div", { className: "section-header" },
-        h("span", { className: "title" }, `${deviceLabel} 设备`),
-        h(TelemetryStrip, { devices, totalCount, isDcu: acceleratorKind === "dcu", offline: machineState === "offline" })
+        h("span", { className: "title" }, `${deviceLabel} 设备`)
       ),
       h("div", { className: "gpu-grid" }, deviceCards(devices, totalCount, machineState))
     ),
@@ -537,7 +540,15 @@ function compactCpuModel(system) {
   const numbered = model.match(/\b(?:C86[-\s\w]*?\s)?(\d{4})\b/);
   if (opn) return `Hygon ${opn[1]}`;
   if (numbered) return `Hygon ${numbered[1]}`;
-  return model.replace(/\s+x\d+$/i, "").replace(/\s+\d+-core Processor/i, "");
+  return model
+    .replace(/\(R\)|\(TM\)/gi, "")
+    .replace(/^Intel\s+/i, "")
+    .replace(/\s+CPU\b/i, "")
+    .replace(/\s+Processor\b/i, "")
+    .replace(/\s+x\d+$/i, "")
+    .replace(/\s+\d+-core\b/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function compactAcceleratorText(status, totalCount, label) {
