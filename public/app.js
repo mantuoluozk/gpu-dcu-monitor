@@ -461,17 +461,24 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
         }, "✎")
       )
     ),
-    h("div", { className: "rack-meter" },
-      h("div", { className: "donut" }, h("span", null, totalCount ? `${status.busyCount || 0}/${totalCount}` : "-")),
-      h("div", null,
-        h("strong", null, status.summary || "等待刷新"),
-        h("span", null, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
+    h("div", { className: "card-overview" },
+      h("div", { className: "rack-meter" },
+        h("div", { className: "donut" },
+          h("strong", null, totalCount ? `${status.busyCount || 0}/${totalCount}` : "-"),
+          h("span", null, acceleratorKind === "nvidia" ? "GPU 占用" : "DCU 占用")
+        )
+      ),
+      h("div", { className: "card-heartbeat" },
+        h("span", null, "运行时间"),
+        h("strong", null, formatCompactDuration(system.uptimeSeconds)),
+        h("span", null, "上次心跳"),
+        h("strong", null, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
       )
     ),
     h("div", { className: "system-summary" },
-      h("span", null, `CPU ${formatPercent(system.cpuUtilization)}`),
-      h("span", null, `内存 ${formatPercent(system.memoryUtilization)}`),
-      h("span", null, `温度 ${formatTemperature(system.cpuTemperatureC)}`)
+      h(CardMetric, { label: "CPU", value: formatPercent(system.cpuUtilization), percent: system.cpuUtilization, meta: cardCpuCapacity(system) }),
+      h(CardMetric, { label: "内存", value: formatPercent(system.memoryUtilization), percent: system.memoryUtilization, meta: formatMemory(system.memoryUsedMiB, system.memoryTotalMiB) }),
+      h(CardMetric, { label: "温度", value: formatTemperature(system.cpuTemperatureC), percent: system.cpuTemperatureC, meta: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined ? "暂无数据" : "CPU 温度" })
     ),
     h("div", { className: "card-hardware-stack" },
       h("div", { className: "card-hardware cpu-hardware" },
@@ -485,8 +492,11 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
         h("span", { className: "hardware-meta", title: cardSystemText(system, server.command) }, cardSystemText(system, server.command))
       )
     ),
+    h("div", { className: "device-strip-head" },
+      h("strong", null, `${acceleratorKind === "nvidia" ? "GPU" : "DCU"} 使用率`),
+      h("span", null, modelSummary(server))
+    ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
-    h("div", { className: "model-line" }, modelSummary(server)),
     h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
       h("span", null, `模型 ${assets.modelCount || 0}`),
       h("span", null, `镜像 ${assets.dockerCount || 0}`),
@@ -495,6 +505,15 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
   );
 });
 
+function CardMetric({ label, value, percent, meta }) {
+  return h("div", { className: "card-metric" },
+    h("span", null, label),
+    h("strong", null, value),
+    h("i", null, h("b", { style: { width: `${normalizePercent(percent)}%` } })),
+    h("em", { title: meta }, meta)
+  );
+}
+
 function gpuSlots(gpus, count, serverKind) {
   const list = gpus.length ? gpus : Array.from({ length: count }, (_, index) => ({ index, state: "unknown" }));
   return list.slice(0, count || 0).map((gpu) => {
@@ -502,10 +521,11 @@ function gpuSlots(gpus, count, serverKind) {
     const chipLevel = gpuOccupancyClass(gpu);
     const vram = normalizePercent(gpu.memoryUtilization);
     const compute = normalizePercent(gpu.utilization);
-    return h("span", { className: `slot ${cls} ${chipLevel}`, key: gpu.index, title: `#${gpu.index} 显存 ${formatPercent(gpu.memoryUtilization)} 算力 ${formatPercent(gpu.utilization)}` },
-      h("b", null, `#${gpu.index}`),
-      h("i", { style: { height: `${Math.max(vram, compute)}%` } }),
-      h("em", null, `${Math.max(vram, compute)}%`)
+    const peak = Math.max(vram, compute);
+    return h("span", { className: `slot ${cls} ${chipLevel}`, key: gpu.index, title: `#${gpu.index} 显存 ${formatPercent(gpu.memoryUtilization)} 算力 ${formatPercent(gpu.utilization)} 温度 ${formatTemperature(gpu.temperatureC)} 功耗 ${formatPower(gpu.powerW)}` },
+      h("span", { className: "slot-head" }, h("b", null, `#${gpu.index}`), h("strong", null, `${peak}%`)),
+      h("i", null, h("u", { style: { width: `${peak}%` } })),
+      h("span", { className: "slot-meta" }, h("em", null, formatTemperature(gpu.temperatureC)), h("em", null, formatPower(gpu.powerW)))
     );
   });
 }
@@ -672,6 +692,11 @@ function cardCpuMeta(system) {
   if (system.cpuCores) parts.push(`${system.cpuCores} 核`);
   if (system.cpuSockets) parts.push(`${system.cpuSockets} 路 CPU`);
   return parts.join(" · ") || "核心与路数识别中";
+}
+
+function cardCpuCapacity(system) {
+  if (!system.cpuCores && !system.cpuSockets) return "核心识别中";
+  return [system.cpuSockets ? `${system.cpuSockets} 路` : "", system.cpuCores ? `${system.cpuCores} 核` : ""].filter(Boolean).join(" / ");
 }
 
 function cardAcceleratorText(server, status, kind) {
@@ -1067,6 +1092,17 @@ function formatDuration(seconds) {
   if (days > 0) return `${days}天 ${hours}小时`;
   if (hours > 0) return `${hours}小时`;
   return `${Math.max(1, Math.floor(total / 60))}分钟`;
+}
+
+function formatCompactDuration(seconds) {
+  const total = Number(seconds);
+  if (!Number.isFinite(total) || total <= 0) return "-";
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${Math.max(1, minutes)}m`;
 }
 
 function formatLoadAverage(value) {

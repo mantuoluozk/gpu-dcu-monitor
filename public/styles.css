@@ -488,12 +488,12 @@ h1 {
 
 .server-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 282px), 1fr));
-  grid-auto-rows: minmax(324px, max-content);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  grid-auto-rows: minmax(476px, max-content);
+  gap: 10px;
   align-items: stretch;
   align-content: start;
-  min-height: 324px;
+  min-height: 476px;
   overflow-y: auto;
   padding: 2px 5px 18px 2px;
 }
@@ -502,14 +502,14 @@ h1 {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--rail);
   border-radius: 8px;
   background: #fff;
-  padding: 10px 10px 9px 13px;
+  padding: 12px 12px 10px 15px;
   transition: box-shadow 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
 }
 
@@ -547,7 +547,7 @@ h1 {
 .card-topline h3 {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.22;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -589,20 +589,26 @@ code {
   background: var(--blue);
 }
 
+.card-overview {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 2px 2px 0;
+}
+
 .rack-meter {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  margin: 0;
+  place-items: center;
 }
 
 .donut {
   position: relative;
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   background: conic-gradient(var(--level-color, var(--green)) var(--busy, 0%), #dce7eb 0);
 }
@@ -610,57 +616,113 @@ code {
 .donut::before {
   content: "";
   position: absolute;
-  width: 30px;
-  height: 30px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   background: var(--panel);
 }
 
+.donut strong,
 .donut span {
   position: relative;
   z-index: 1;
+}
+
+.donut strong {
   font-family: Consolas, "Cascadia Mono", monospace;
-  font-size: 11px;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.donut span {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 8px;
   font-weight: 900;
 }
 
-.rack-meter strong {
-  display: block;
-  overflow-wrap: anywhere;
-  font-size: 16px;
-  line-height: 1.08;
+.card-heartbeat {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 8px;
+  align-items: baseline;
+  min-width: 0;
+  border-left: 1px solid #dce5ed;
+  padding-left: 12px;
 }
 
-.rack-meter span {
+.card-heartbeat span {
   color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.card-heartbeat strong {
+  min-width: 0;
+  color: var(--ink);
+  font-family: Consolas, "Cascadia Mono", monospace;
   font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .system-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+  gap: 6px;
   margin: 0;
 }
 
-.system-summary span {
+.card-metric {
+  display: grid;
+  gap: 4px;
   min-width: 0;
-  overflow: hidden;
   border: 1px solid var(--rail);
   border-radius: 7px;
-  background: var(--paper);
+  background: #fff;
+  padding: 7px 7px 6px;
+}
+
+.card-metric > span {
   color: var(--ink-soft);
-  padding: 4px 5px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
-  text-align: center;
+}
+
+.card-metric > strong {
+  color: #145de0;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.card-metric > i {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #dfe7f1;
+}
+
+.card-metric > i b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #1769ed;
+}
+
+.card-metric > em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 8px;
+  font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .card-hardware-stack {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.84fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 6px;
   min-width: 0;
   margin: 0;
@@ -673,7 +735,7 @@ code {
   gap: 2px 6px;
   min-width: 0;
   border-radius: 7px;
-  padding: 7px 8px 6px;
+  padding: 8px 9px 7px;
 }
 
 .cpu-hardware {
@@ -729,50 +791,96 @@ code {
   white-space: nowrap;
 }
 
+.device-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  border-left: 3px solid #1769ed;
+  padding-left: 7px;
+}
+
+.device-strip-head strong {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.device-strip-head span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .slot-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
   border: 1px solid var(--rail);
   border-radius: 8px;
   border-color: #c9e4d7;
   background: #f1f8f4;
-  padding: 6px;
+  padding: 7px;
 }
 
 .slot {
   position: relative;
   display: grid;
-  align-content: space-between;
-  min-height: 30px;
+  gap: 4px;
+  min-height: 48px;
   overflow: hidden;
   border: 1px solid #cfe7dd;
   border-radius: 6px;
   background: #e8f5ef;
   color: #0c7040;
-  padding: 3px 5px;
+  padding: 5px 6px;
   font-family: Consolas, "Cascadia Mono", monospace;
   font-size: 9px;
   font-weight: 900;
 }
 
-.slot i {
-  position: absolute;
-  inset: auto 0 0;
-  background: currentColor;
-  opacity: 0.18;
-}
-
-.slot b,
-.slot em {
+.slot-head,
+.slot-meta {
   position: relative;
   z-index: 1;
-  font-style: normal;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
 }
 
-.slot em {
-  justify-self: end;
+.slot-head strong {
+  font-size: 11px;
+}
+
+.slot > i {
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(90, 119, 136, 0.18);
+}
+
+.slot > i u {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  text-decoration: none;
+}
+
+.slot-meta em {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 7px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .slot.offline,
@@ -816,19 +924,6 @@ code {
   --level-color: var(--red);
 }
 
-.model-line {
-  min-width: 0;
-  margin-top: 0;
-  border-top: 1px solid rgba(47, 62, 77, 0.12);
-  padding-top: 6px;
-  color: var(--accent-dark);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 900;
-}
-
 .asset-summary {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
@@ -840,7 +935,8 @@ code {
   border-top: 1px solid #dce4e8;
   border-radius: 0 0 6px 6px;
   background: #f3f6f8;
-  padding: 5px;
+  margin-top: auto;
+  padding: 7px;
   color: var(--ink-soft);
   font-size: 11px;
 }
