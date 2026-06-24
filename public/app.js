@@ -429,7 +429,10 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
   const kind = getServerKind(server);
   const acceleratorKind = server.command === "nvidia-smi" ? "nvidia" : "dcu";
   const totalCount = status.totalCount || server.gpuCount || 0;
+  const busyCount = status.busyCount || 0;
+  const freeCount = Math.max(totalCount - busyCount, 0);
   const busyPercent = totalCount ? Math.round(((status.busyCount || 0) / totalCount) * 100) : 0;
+  const deviceLabel = acceleratorKind === "nvidia" ? "GPU" : "DCU";
 
   return h("article", {
     className: `server-card ${serverOccupancyClass(server)}${selected ? " selected" : ""}`,
@@ -444,7 +447,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
     }
   },
     h("div", { className: "card-topline" },
-      h("div", null,
+      h("div", { className: "card-title-block" },
         h("h3", null, server.name),
         h("code", null, `${server.user ? `${server.user}@` : ""}${server.host}:${server.port}`)
       ),
@@ -461,18 +464,21 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
         }, "✎")
       )
     ),
-    h("div", { className: "card-overview" },
-      h("div", { className: "rack-meter" },
-        h("div", { className: "donut" },
-          h("strong", null, totalCount ? `${status.busyCount || 0}/${totalCount}` : "-"),
-          h("span", null, acceleratorKind === "nvidia" ? "GPU 占用" : "DCU 占用")
+    h("div", { className: `card-hero hero-${kind}` },
+      h("div", { className: "donut" },
+        h("div", { className: "donut-core" },
+          h("strong", null, totalCount ? `${busyCount}/${totalCount}` : "-"),
+          h("span", null, deviceLabel)
         )
       ),
-      h("div", { className: "card-heartbeat" },
-        h("span", null, "运行时间"),
-        h("strong", null, formatCompactDuration(system.uptimeSeconds)),
-        h("span", null, "上次心跳"),
-        h("strong", null, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
+      h("div", { className: "hero-info" },
+        h("span", null, "设备占用"),
+        h("strong", null, `${busyPercent}%`),
+        h("em", null, totalCount
+          ? busyCount
+            ? `已分配 ${busyCount} 张 · 空闲 ${freeCount} 张`
+            : "可立即分配资源"
+          : status.summary || "等待采集")
       )
     ),
     h("div", { className: "system-summary" },
@@ -489,18 +495,22 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       h("div", { className: "card-hardware accelerator-hardware" },
         h("span", { className: "hardware-label" }, acceleratorKind === "nvidia" ? "GPU" : "DCU"),
         h("strong", { title: cardAcceleratorText(server, status, acceleratorKind) }, cardAcceleratorText(server, status, acceleratorKind)),
-        h("span", { className: "hardware-meta", title: cardSystemText(system, server.command) }, cardSystemText(system, server.command))
+        h("span", { className: "hardware-meta", title: cardAcceleratorMeta(server, system) }, cardAcceleratorMeta(server, system))
       )
     ),
     h("div", { className: "device-strip-head" },
-      h("strong", null, `${acceleratorKind === "nvidia" ? "GPU" : "DCU"} 使用率`),
-      h("span", null, modelSummary(server))
+      h("strong", null, `${deviceLabel} 设备`),
+      h("span", { className: "device-legend" },
+        busyCount ? h("i", { className: "legend-busy" }, "运行") : null,
+        h("i", { className: "legend-idle" }, "空闲")
+      )
     ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
     h("div", { className: `asset-summary ${assets.state === "failed" ? "failed" : ""}` },
-      h("span", null, `模型 ${assets.modelCount || 0}`),
-      h("span", null, `镜像 ${assets.dockerCount || 0}`),
-      h("em", null, assetUpdatedText(assets))
+      h("span", null, h("small", null, "模型"), h("strong", null, assets.modelCount || 0)),
+      h("span", null, h("small", null, "镜像"), h("strong", null, assets.dockerCount || 0)),
+      h("span", null, h("small", null, "已运行"), h("strong", null, formatCompactDuration(system.uptimeSeconds))),
+      h("em", null, status.updatedAt ? formatTime(status.updatedAt) : "未采集")
     )
   );
 });
@@ -523,11 +533,22 @@ function gpuSlots(gpus, count, serverKind) {
     const compute = normalizePercent(gpu.utilization);
     const peak = Math.max(vram, compute);
     return h("span", { className: `slot ${cls} ${chipLevel}`, key: gpu.index, title: `#${gpu.index} 显存 ${formatPercent(gpu.memoryUtilization)} 算力 ${formatPercent(gpu.utilization)} 温度 ${formatTemperature(gpu.temperatureC)} 功耗 ${formatPower(gpu.powerW)}` },
-      h("span", { className: "slot-head" }, h("b", null, `#${gpu.index}`), h("strong", null, `${peak}%`)),
-      h("i", null, h("u", { style: { width: `${peak}%` } })),
-      h("span", { className: "slot-meta" }, h("em", null, formatTemperature(gpu.temperatureC)), h("em", null, formatPower(gpu.powerW)))
+      h("b", null, `#${gpu.index}`),
+      h("span", { className: "slot-main" },
+        h("strong", null, `${peak}%`),
+        h("em", null, gpuCardSub(gpu))
+      ),
+      h("i", { "aria-hidden": "true" })
     );
   });
+}
+
+function gpuCardSub(gpu) {
+  const temperature = formatTemperature(gpu.temperatureC);
+  const memory = gpu.memoryTotalMiB
+    ? `${formatGiB(gpu.memoryUsedMiB || 0)}/${formatGiB(gpu.memoryTotalMiB)}`
+    : formatPower(gpu.powerW);
+  return [temperature, memory].filter((value) => value !== "-").join(" · ") || "暂无传感器数据";
 }
 
 function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClose }) {
@@ -712,6 +733,10 @@ function cardSystemText(system, command) {
   const driver = system.driverVersion ? `${commandLabel(command)} ${system.driverVersion}` : "";
   const text = [os, driver].filter(Boolean).join(" · ");
   return text || "系统/驱动识别中";
+}
+
+function cardAcceleratorMeta(server, system) {
+  return [modelSummary(server), cardSystemText(system, server.command)].filter(Boolean).join(" · ");
 }
 
 function shortSystemName(value) {
