@@ -79,6 +79,7 @@
 - 推荐用 `git archive --format=tar -o deploy-gpu-dcu-monitor.tar HEAD` 打包当前提交，再 `scp` 到两台机器的 `/tmp/`，最后在 `/opt/gpu-dcu-monitor` 解包并重启服务。
 - 远端执行带 `$(date ...)` 的命令时，Windows PowerShell 外层要用单引号保护远端命令，避免本地 PowerShell 提前展开。
 - 部署完成后至少验证两台机器的 `/`、`/api/servers` 返回 200，并确认 `systemctl is-active gpu-dcu-monitor` 为 `active`。
+- 当前 Windows 主机连接两台部署服务器时需要显式指定 `C:\Users\zhengke\.ssh\id_ed25519` 并使用 `-o IdentitiesOnly=yes`；仅依赖 SSH 默认密钥发现可能在昆山报 `Permission denied`，也可能因 VPN 路由尚未就绪而误判太原超时。
 
 ## 服务器配置和采集
 
