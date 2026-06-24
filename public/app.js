@@ -427,6 +427,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
   const system = status.system || {};
   const assets = server.assets || {};
   const kind = getServerKind(server);
+  const acceleratorKind = server.command === "nvidia-smi" ? "nvidia" : "dcu";
   const totalCount = status.totalCount || server.gpuCount || 0;
   const busyPercent = totalCount ? Math.round(((status.busyCount || 0) / totalCount) * 100) : 0;
 
@@ -472,10 +473,17 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       h("span", null, `内存 ${formatPercent(system.memoryUtilization)}`),
       h("span", null, `温度 ${formatTemperature(system.cpuTemperatureC)}`)
     ),
-    h("div", { className: "card-system-detail" },
-      h("span", { title: cardCpuText(system) }, cardCpuText(system)),
-      h("span", { title: cardAcceleratorText(server, status, kind) }, cardAcceleratorText(server, status, kind)),
-      h("span", { title: cardSystemText(system, server.command) }, cardSystemText(system, server.command))
+    h("div", { className: "card-hardware-stack" },
+      h("div", { className: "card-hardware cpu-hardware" },
+        h("span", { className: "hardware-label" }, "CPU"),
+        h("strong", { title: bestCpuModel(system) }, formatCpuModel(bestCpuModel(system))),
+        h("span", { className: "hardware-meta" }, cardCpuMeta(system))
+      ),
+      h("div", { className: "card-hardware accelerator-hardware" },
+        h("span", { className: "hardware-label" }, acceleratorKind === "nvidia" ? "GPU" : "DCU"),
+        h("strong", { title: cardAcceleratorText(server, status, acceleratorKind) }, cardAcceleratorText(server, status, acceleratorKind)),
+        h("span", { className: "hardware-meta", title: cardSystemText(system, server.command) }, cardSystemText(system, server.command))
+      )
     ),
     h("div", { className: "slot-grid" }, gpuSlots(status.gpus || [], totalCount, kind)),
     h("div", { className: "model-line" }, modelSummary(server)),
@@ -645,13 +653,25 @@ function InfoCell({ label, value, wide }) {
 
 function bestCpuModel(system) {
   const candidates = [system.cpuLscpuModel, system.cpuModelDetail, system.cpuModels, system.cpuModel].filter(Boolean);
-  return candidates.find((value) => /\bOPN\s*:/i.test(value)) || candidates[0] || "-";
+  return candidates.find((value) => /\bOPN\s*[:：]?\s*[A-Z0-9-]{3,}/i.test(value))
+    || candidates.find((value) => /\bOPN\b/i.test(value))
+    || candidates[0]
+    || "-";
 }
 
-function cardCpuText(system) {
-  const model = bestCpuModel(system);
-  if (!model || model === "-") return "CPU 型号识别中";
-  return `CPU ${model}`;
+function formatCpuModel(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text || text === "-") return "型号识别中";
+  return text
+    .replace(/\s*\(\s*OPN\s*[:：]\s*([^)]+)\)/i, " · OPN $1")
+    .replace(/\bOPN\s*[:：]\s*/i, "OPN ");
+}
+
+function cardCpuMeta(system) {
+  const parts = [];
+  if (system.cpuCores) parts.push(`${system.cpuCores} 核`);
+  if (system.cpuSockets) parts.push(`${system.cpuSockets} 路 CPU`);
+  return parts.join(" · ") || "核心与路数识别中";
 }
 
 function cardAcceleratorText(server, status, kind) {

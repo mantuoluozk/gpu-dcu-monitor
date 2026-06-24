@@ -26,6 +26,23 @@
 - 启动入口：`server.js`
 - 启动命令：`node server.js`
 - Windows PowerShell 里直接执行 `npm start` 可能被 `npm.ps1` 执行策略拦截；需要按 README 用 `cmd.exe /c npm.cmd start`、`start-windows.bat` 或直接 `node server.js`。
+- Codex 调试时不要只在普通沙箱命令里用 `Start-Process` 后立即结束命令会话；该子进程可能随会话退出，表现为刚返回 200、浏览器随后又 `ERR_CONNECTION_REFUSED`。
+- 需要让服务持续运行供用户查看时，优先在允许的宿主 PowerShell 会话中执行以下后台启动流程：
+  ```powershell
+  $existing = Get-NetTCPConnection -LocalPort 3066 -State Listen -ErrorAction SilentlyContinue
+  if ($existing) {
+    $existing | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+  }
+  $proc = Start-Process -FilePath node -ArgumentList 'server.js' -WorkingDirectory 'C:\Users\zhengke\Documents\桌面端服务器占用监控' -WindowStyle Hidden -PassThru
+  Start-Sleep -Seconds 3
+  ```
+- 启动后必须同时验证首页和接口，不能只看进程是否存在：
+  ```powershell
+  Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3066/
+  Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3066/api/servers
+  ```
+- 如果端口已被占用，先用 `Get-NetTCPConnection -LocalPort 3066 -State Listen` 获取 `OwningProcess`，只停止该 PID，不要模糊匹配并停止所有 Node 进程。
+- 本地改完前端后无需构建；重启 `node server.js`，再刷新浏览器即可。验证时检查页面标题、服务器卡片是否渲染、浏览器控制台是否有 error。
 - 后台采集默认间隔：`POLL_INTERVAL_MS=10000`
 - 默认 SSH/采集超时：`SSH_TIMEOUT_MS=20000`
 
@@ -75,11 +92,13 @@
 - DCU/GPU 数量由后端采集结果自动识别，不需要用户手动选择。
 - 型号信息在添加、编辑或手动刷新时采集；普通定时刷新只采集占用状态，避免额外开销。
 - `hy-smi` 已加入登录 Shell 兜底：当非交互 SSH 找不到 `hy-smi` 时，会尝试通过 `bash -ilc` 加载环境后再采集。
+- 解析 `lscpu`、`/proc/cpuinfo` 等冒号分隔输出时，只能移除第一个字段名前缀，不能直接使用 `awk -F: '{print $2}'`；CPU 型号自身可能包含 `OPN:7493`，按全部冒号切分会截断具体型号。
 
 ## 前端和模型资产
 
 - 前端已经升级为本地 React UMD 运行时，不需要构建步骤；主要文件是 `public/index.html`、`public/app.js`、`public/styles.css` 和 `public/vendor/`。
 - 首页服务器卡片需要完整显示模型数、镜像数和盘点时间；不要为了压缩卡片直接删除这些信息。
+- 首页 CPU 型号必须完整保留具体 OPN/部件号，允许在 CPU 色块内换行，不要用单行省略号截断；CPU 与 GPU/DCU 信息应使用不同背景色，方便快速区分主机和加速卡信息。
 - 顶部“刷新模型资产”手动入口已隐藏，避免误触发深目录扫描；模型资产仍会按定时任务自动盘点，也保留模型 / 镜像检索页和后端 `/api/assets/refresh` 接口。
 - 模型资产默认扫描深度已从 12 层降为 6 层；需要更深扫描时优先通过部署环境变量 `ASSET_SCAN_MAX_DEPTH` 单独调整。
 - 模型资产默认扫描路径已移除 `/opt`、`/tpstor`、`/glusterfs-user-data`、`/Ring-2.5-1T` 等偏固定环境目录；需要时通过 `ASSET_PATHS` 单独配置。

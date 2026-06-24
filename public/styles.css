@@ -502,15 +502,13 @@ h1 {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 6px;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--rail);
   border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(47, 111, 221, 0.06), transparent 42%),
-    linear-gradient(180deg, #fff, #f8fafb);
+  background: #fff;
   padding: 10px 10px 9px 13px;
   transition: box-shadow 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
 }
@@ -660,33 +658,75 @@ code {
   white-space: nowrap;
 }
 
-.card-system-detail {
+.card-hardware-stack {
   display: grid;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.84fr);
+  gap: 6px;
   min-width: 0;
   margin: 0;
-  border: 1px solid rgba(47, 111, 221, 0.2);
-  border-left: 4px solid var(--accent);
-  border-radius: 7px;
-  background:
-    linear-gradient(90deg, rgba(47, 111, 221, 0.11), rgba(47, 111, 221, 0.02)),
-    #fff;
-  padding: 6px 8px;
 }
 
-.card-system-detail span {
+.card-hardware {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 6px;
+  min-width: 0;
+  border-radius: 7px;
+  padding: 7px 8px 6px;
+}
+
+.cpu-hardware {
+  border: 1px solid #bfd3f7;
+  background: #edf4ff;
+  box-shadow: inset 3px 0 #3974dc;
+}
+
+.accelerator-hardware {
+  border: 1px solid #bfe3d2;
+  background: #edf8f2;
+  box-shadow: inset 3px 0 #2a9b68;
+}
+
+.hardware-label {
+  align-self: start;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.cpu-hardware .hardware-label {
+  background: #dbe9ff;
+  color: #2257ad;
+}
+
+.accelerator-hardware .hardware-label {
+  background: #d8f0e4;
+  color: #126b46;
+}
+
+.card-hardware strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+
+.card-hardware .hardware-meta {
+  grid-column: 1 / -1;
   min-width: 0;
   overflow: hidden;
   color: var(--ink-soft);
-  font-size: 10px;
-  font-weight: 900;
-  line-height: 1.25;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.card-system-detail span:first-child {
-  color: var(--ink);
 }
 
 .slot-grid {
@@ -696,9 +736,8 @@ code {
   min-width: 0;
   border: 1px solid var(--rail);
   border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(226, 234, 239, 0.8), rgba(249, 250, 251, 0.95)),
-    #f4f7f9;
+  border-color: #c9e4d7;
+  background: #f1f8f4;
   padding: 6px;
 }
 
@@ -780,7 +819,7 @@ code {
 .model-line {
   min-width: 0;
   margin-top: 0;
-  border-top: 1px dashed rgba(47, 62, 77, 0.18);
+  border-top: 1px solid rgba(47, 62, 77, 0.12);
   padding-top: 6px;
   color: var(--accent-dark);
   overflow: hidden;
@@ -798,7 +837,9 @@ code {
   min-width: 0;
   margin-top: 0;
   border-radius: 7px;
-  background: rgba(47, 62, 77, 0.04);
+  border-top: 1px solid #dce4e8;
+  border-radius: 0 0 6px 6px;
+  background: #f3f6f8;
   padding: 5px;
   color: var(--ink-soft);
   font-size: 11px;
