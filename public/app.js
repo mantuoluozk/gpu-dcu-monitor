@@ -195,6 +195,13 @@ function App() {
     setDialogOpen(true);
   }, []);
 
+  const changeView = useCallback((nextView) => {
+    if (view === "assets" && nextView === "dashboard") {
+      setQuery("");
+    }
+    setView(nextView);
+  }, [view]);
+
   const manualRefresh = useCallback(async () => {
     try {
       await requestJson("/api/refresh", { method: "POST" });
@@ -280,7 +287,7 @@ function App() {
         title: pageTitle,
         description: siteConfig.current.description || DEFAULT_SITE.description,
         view,
-        setView,
+        setView: changeView,
         query,
         setQuery,
         searchLabel,
