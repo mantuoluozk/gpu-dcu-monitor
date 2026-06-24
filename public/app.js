@@ -494,14 +494,12 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
     h("div", { className: "quick-stats" },
       h(QuickStat, { label: "CPU", value: formatPercent(system.cpuUtilization), extra: cardCpuCapacity(system), percent: system.cpuUtilization, color: metricColor(system.cpuUtilization) }),
       h(QuickStat, { label: "内存", value: formatPercent(system.memoryUtilization), extra: formatMemoryCompact(system.memoryUsedMiB, system.memoryTotalMiB), percent: system.memoryUtilization, color: metricColor(system.memoryUtilization) }),
-      h(QuickStat, { label: "温度", value: formatTemperature(system.cpuTemperatureC), extra: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined ? "未接入" : "CPU 温度", percent: system.cpuTemperatureC, color: temperatureColor(system.cpuTemperatureC), empty: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined })
+      h(QuickStat, { label: "CPU温度", value: formatTemperature(system.cpuTemperatureC), extra: cpuTemperatureCaption(system), percent: system.cpuTemperatureC, color: temperatureColor(system.cpuTemperatureC), empty: system.cpuTemperatureC === null || system.cpuTemperatureC === undefined })
     ),
     h("div", { className: "gpu-section" },
       h("div", { className: "section-header" },
         h("span", { className: "title" }, `${deviceLabel} 设备`),
-        h("span", { className: "legend" }, deviceLegends(devices, machineState).map((item) =>
-          h("span", { key: item.key }, h("span", { className: `dot ${item.key}` }), item.label)
-        ))
+        h(TelemetryStrip, { devices, totalCount, isDcu: acceleratorKind === "dcu", offline: machineState === "offline" })
       ),
       h("div", { className: "gpu-grid" }, deviceCards(devices, totalCount, machineState))
     ),
@@ -545,7 +543,8 @@ function compactCpuModel(system) {
 function compactAcceleratorText(status, totalCount, label) {
   const cuValues = uniqueValues((status.gpus || []).map((gpu) => gpu.cuCount).filter(Boolean));
   const cu = cuValues.length === 1 ? ` · ${cuValues[0]} CU` : "";
-  return `${totalCount || "-"} 张 ${label}${cu}`;
+  const missingCu = label === "DCU" && totalCount && cuValues.length === 0 ? " · CU未提供" : "";
+  return `${totalCount || "-"} 张 ${label}${cu}${missingCu}`;
 }
 
 function compactSystemText(system) {
@@ -559,6 +558,31 @@ function QuickStat({ label, value, extra, percent, color, empty }) {
     h("div", { className: "extra" }, extra),
     !empty && percent !== null && percent !== undefined ? h("div", { className: "bar" }, h("div", { className: color || "normal", style: { width: `${normalizePercent(percent)}%` } })) : null
   );
+}
+
+function TelemetryStrip({ devices, totalCount, isDcu, offline }) {
+  const total = Math.max(Number(totalCount) || 0, (devices || []).length);
+  if (offline || !total) {
+    return h("span", { className: "telemetry-strip" },
+      h("span", { className: "telemetry-chip unavailable" }, offline ? "采集离线" : "等待采集")
+    );
+  }
+  const metrics = [
+    { key: "temperature", label: "温度", count: countDeviceMetric(devices, "temperatureC") },
+    { key: "power", label: "功耗", count: countDeviceMetric(devices, "powerW") }
+  ];
+  if (isDcu) metrics.push({ key: "cu", label: "CU", count: countDeviceMetric(devices, "cuCount") });
+  return h("span", { className: "telemetry-strip", title: "当前加速卡遥测采集完整度" },
+    metrics.map((item) => h("span", {
+      className: `telemetry-chip ${item.count === total ? "complete" : item.count === 0 ? "unavailable" : "partial"}`,
+      key: item.key,
+      title: item.count === total ? `${item.label}已完整采集` : `${item.label}仅采集到 ${item.count}/${total}；目标驱动或管理工具未返回其余数据`
+    }, `${item.label} ${item.count}/${total}`))
+  );
+}
+
+function countDeviceMetric(devices, key) {
+  return (devices || []).filter((device) => device[key] !== null && device[key] !== undefined && device[key] !== "").length;
 }
 
 function EditIcon() {
@@ -709,8 +733,8 @@ function CpuPanel({ system }) {
         h(InfoCell, { label: "CPU型号", value: modelText, wide: true }),
         h(InfoCell, { label: "物理CPU", value: system.cpuSockets ? `${system.cpuSockets} 颗` : "-" }),
         h(InfoCell, { label: "逻辑核心", value: system.cpuCores ? `${system.cpuCores} 核` : "-" }),
-        h(InfoCell, { label: "温度", value: formatTemperature(system.cpuTemperatureC) }),
-        h(InfoCell, { label: "功耗", value: formatPower(system.cpuPowerW) }),
+        h(InfoCell, { label: "CPU温度", value: formatCpuTemperatureDetail(system) }),
+        h(InfoCell, { label: cpuPowerLabel(system), value: formatCpuPowerDetail(system) }),
         h(InfoCell, { label: "负载", value: formatLoadAverage(system.loadAverage) })
       )
     )
@@ -751,6 +775,10 @@ function SystemPanel({ system, command }) {
 function DevicePanel({ gpus, totalCount, command }) {
   const label = command === "nvidia-smi" ? "GPU" : "DCU";
   return h(DetailSection, { eyebrow: label, title: `${label} 卡状态`, meta: totalCount ? `${gpus.filter((gpu) => gpu.state === "busy").length}/${totalCount} 占用` : "识别中", className: "device-section" },
+    h("div", { className: "detail-telemetry" },
+      h(TelemetryStrip, { devices: gpus, totalCount, isDcu: command !== "nvidia-smi", offline: false }),
+      h("span", null, command === "nvidia-smi" ? "CU 不适用于 NVIDIA GPU" : "缺失项表示驱动工具未返回，未按型号猜测")
+    ),
     h("div", { className: "gpu-list" }, (gpus || []).map((gpu) => h(GpuRow, { gpu, label, key: gpu.index })))
   );
 }
@@ -839,6 +867,27 @@ function temperatureClass(value) {
   if (temperature >= 85) return "hot";
   if (temperature >= 70) return "warm";
   return "";
+}
+
+function cpuTemperatureCaption(system) {
+  if (system.cpuTemperatureC === null || system.cpuTemperatureC === undefined) return "传感器未暴露";
+  return system.cpuTemperatureSource === "thermal_zone" ? "内核温区" : "CPU 传感器";
+}
+
+function formatCpuTemperatureDetail(system) {
+  if (system.cpuTemperatureC === null || system.cpuTemperatureC === undefined) return "传感器未暴露";
+  const source = system.cpuTemperatureSource === "thermal_zone" ? "内核温区" : system.cpuTemperatureSource === "sensors" ? "sensors" : "";
+  return [formatTemperature(system.cpuTemperatureC), source].filter(Boolean).join(" · ");
+}
+
+function cpuPowerLabel(system) {
+  return system.cpuPowerScope === "host" ? "主机功耗" : "CPU功耗";
+}
+
+function formatCpuPowerDetail(system) {
+  if (system.cpuPowerW === null || system.cpuPowerW === undefined) return "功耗计未暴露";
+  const scope = system.cpuPowerScope === "host" ? "整机读数" : system.cpuPowerScope === "package" ? "处理器封装" : "传感器读数";
+  return `${formatPower(system.cpuPowerW)} · ${scope}`;
 }
 
 function formatMemoryCompact(usedMiB, totalMiB) {

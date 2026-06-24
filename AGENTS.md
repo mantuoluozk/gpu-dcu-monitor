@@ -121,3 +121,6 @@
 - `10.17.26.107`：本地和云端都已验证可采集，属于 `hy-smi` 需要登录 Shell 环境兜底的情况。
 - NVIDIA 机器的 `nvidia-smi` 偶尔响应较慢，默认超时时间已调到 20 秒。
 - 多人访问公共服务时，共享同一份云端服务器列表；如果后续多人同时编辑冲突变多，需要再加编辑锁、操作审计或账号权限。
+- 首页“温度”指 CPU 温度，来源为 `sensors` 或 `/sys/class/thermal`；部分主板、内核或虚拟化环境不暴露 CPU 温度，缺失不代表 GPU/DCU 温度也缺失。
+- CPU 功耗属于 best-effort 数据：`powercap` 通常接近处理器封装功耗，`hwmon` 可能是整机/主板功耗，界面必须按后端返回的 `cpuPowerScope` 区分，不能统一标成 CPU 功耗。
+- GPU/DCU 温度与功耗来自 `nvidia-smi` / `hy-smi`。DCU CU 数优先来自 `hy-smi -q` 或 `rocminfo`；K100_AI、BW10 等不同批次可能配置不同，驱动未返回时显示缺失原因，不得按型号盲猜。

@@ -916,6 +916,47 @@
   font-size: 9px;
 }
 
+.machine-card .telemetry-strip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.machine-card .telemetry-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 1px 5px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 7px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.machine-card .telemetry-chip.complete {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.machine-card .telemetry-chip.partial {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.machine-card .telemetry-chip.unavailable {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
 .machine-card .legend {
   gap: 6px;
   font-size: 7px;
