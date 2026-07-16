@@ -721,7 +721,10 @@ function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClos
     ),
     status.error ? h("div", { className: "asset-error" }, status.error) : null,
     h("div", { className: "detail-section-nav" },
-      h("span", null, "01  主机"), h("span", null, "02  加速卡"), h("span", null, "03  使用历史"), h("span", null, "04  资产")
+      h("span", null, h("strong", null, "01"), "主机概况"),
+      h("span", null, h("strong", null, "02"), "加速卡状态"),
+      h("span", null, h("strong", null, "03"), "使用历史"),
+      h("span", null, h("strong", null, "04"), "模型与镜像资产")
     ),
     h("div", { className: "detail-section-grid" },
       h(CpuPanel, { system }),
@@ -767,7 +770,7 @@ function HistoryPanel({ server, totalCount }) {
         h("select", { value: device, onChange: (event) => setDevice(event.target.value) },
           h("option", { value: "" }, "整机"),
           ...Array.from({ length: totalCount || 0 }, (_, index) => h("option", { value: String(index), key: index }, `卡 #${index}`))),
-        h("a", { className: "ghost-action history-export", href: exportUrl }, "导出 CSV")
+        h("a", { className: "ghost-action history-export", href: exportUrl }, h("span", { "aria-hidden": "true" }, "↓"), "导出 CSV")
       )
     ),
     h("div", { className: "history-summary" },
