@@ -702,10 +702,94 @@ function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClos
       h(SystemPanel, { system, command: server.command })
     ),
     h(DevicePanel, { gpus: status.gpus || [], totalCount, command: server.command }),
+    h(HistoryPanel, { server, totalCount }),
     h(AssetPanel, { assets, copy })
     )
   );
 }
+
+function HistoryPanel({ server, totalCount }) {
+  const [range, setRange] = useState("24h");
+  const [device, setDevice] = useState("");
+  const [metric, setMetric] = useState("utilization");
+  const [payload, setPayload] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const dates = historyRange(range);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    const params = new URLSearchParams({ from: dates.from, to: dates.to });
+    if (device !== "") params.set("device", device);
+    requestJson(`/api/servers/${encodeURIComponent(server.id)}/history?${params.toString()}`)
+      .then((result) => { if (!cancelled) setPayload(result); })
+      .catch((requestError) => { if (!cancelled) setError(requestError.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [server.id, range, device]);
+  const summary = payload?.summary || {};
+  const points = payload?.points || [];
+  const exportUrl = `/api/servers/${encodeURIComponent(server.id)}/history/export?${new URLSearchParams({ from: dates.from, to: dates.to }).toString()}`;
+  return h("section", { className: "detail-section history-section" },
+    h("div", { className: "section-head history-head" },
+      h("div", null, h("p", { className: "eyebrow" }, "History"), h("h3", null, "GPU/DCU 历史使用记录")),
+      h("div", { className: "history-controls" },
+        h("select", { value: range, onChange: (event) => setRange(event.target.value) },
+          h("option", { value: "24h" }, "最近24小时"), h("option", { value: "7d" }, "最近7天"), h("option", { value: "30d" }, "最近30天"), h("option", { value: "90d" }, "最近90天"), h("option", { value: "365d" }, "最近一年")),
+        h("select", { value: device, onChange: (event) => setDevice(event.target.value) },
+          h("option", { value: "" }, "整机"),
+          ...Array.from({ length: totalCount || 0 }, (_, index) => h("option", { value: String(index), key: index }, `卡 #${index}`))),
+        h("a", { className: "ghost-action history-export", href: exportUrl }, "导出 CSV")
+      )
+    ),
+    h("div", { className: "history-summary" },
+      h(HistoryStat, { label: "繁忙占比", value: formatHistoryPercent(summary.busyPercent) }),
+      h(HistoryStat, { label: "繁忙分钟", value: summary.busyMinutes === undefined ? "-" : `${summary.busyMinutes} 分钟` }),
+      h(HistoryStat, { label: "平均算力", value: formatHistoryPercent(summary.utilizationAvg) }),
+      h(HistoryStat, { label: "峰值算力", value: formatHistoryPercent(summary.utilizationMax) }),
+      h(HistoryStat, { label: "数据完整率", value: formatHistoryPercent(summary.coveragePercent) })
+    ),
+    h("div", { className: "history-metric-tabs" },
+      [["utilization", "算力"], ["memoryUtilization", "显存"], ["temperatureC", "温度"], ["powerW", "功耗"]].map(([key, label]) => h("button", { type: "button", key, className: metric === key ? "active" : "", onClick: () => setMetric(key) }, label))
+    ),
+    loading ? h("div", { className: "history-empty" }, "历史数据加载中…") : error ? h("div", { className: "asset-error" }, error) : points.length ? h(HistoryChart, { points, metric }) : h("div", { className: "history-empty" }, "历史记录将在首个完整采集分钟结束后显示"),
+    h("p", { className: "history-note" }, "离线时段显示为空档且不计入 0% 使用率；近 90 天为分钟数据，更早数据为 5 分钟长期数据。")
+  );
+}
+
+function HistoryStat({ label, value }) { return h("div", { className: "history-stat" }, h("span", null, label), h("strong", null, value)); }
+
+function HistoryChart({ points, metric }) {
+  const width = 1000;
+  const height = 190;
+  const valid = points.map((point) => Number(point[metric])).filter(Number.isFinite);
+  const max = metric === "utilization" || metric === "memoryUtilization" ? 100 : Math.max(1, ...valid) * 1.08;
+  const segments = [];
+  let current = [];
+  points.forEach((point, index) => {
+    const value = Number(point[metric]);
+    if (point.state !== "online" || !Number.isFinite(value)) { if (current.length) segments.push(current); current = []; return; }
+    current.push(`${(index / Math.max(1, points.length - 1)) * width},${14 + (1 - Math.min(value, max) / max) * 150}`);
+  });
+  if (current.length) segments.push(current);
+  return h("div", { className: "history-chart-wrap" },
+    h("svg", { className: "history-chart", viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: "none" },
+      [0, .25, .5, .75, 1].map((ratio) => h("line", { key: ratio, x1: 0, x2: width, y1: 14 + ratio * 150, y2: 14 + ratio * 150, className: "history-grid-line" })),
+      segments.map((segment, index) => h("polyline", { key: index, points: segment.join(" "), className: "history-line", fill: "none" }))
+    ),
+    h("div", { className: "history-axis" }, h("span", null, formatHistoryTime(points[0]?.t)), h("strong", null, `最高 ${formatHistoryMetric(max, metric)}`), h("span", null, formatHistoryTime(points[points.length - 1]?.t)))
+  );
+}
+
+function historyRange(value) {
+  const amount = value === "7d" ? 7 : value === "30d" ? 30 : value === "90d" ? 90 : value === "365d" ? 365 : 1;
+  const to = new Date();
+  return { from: new Date(to.getTime() - amount * 86400000).toISOString(), to: to.toISOString() };
+}
+function formatHistoryPercent(value) { return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}%` : "-"; }
+function formatHistoryTime(value) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"; }
+function formatHistoryMetric(value, metric) { if (!Number.isFinite(Number(value))) return "-"; return metric === "temperatureC" ? `${Math.round(value)}℃` : metric === "powerW" ? `${Math.round(value)}W` : `${Math.round(value)}%`; }
 
 function MetaBox({ label, value, tone }) {
   return h("div", { className: `meta-box ${tone || ""}` }, h("span", null, label), h("strong", null, value));

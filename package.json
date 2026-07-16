@@ -5,7 +5,8 @@
   "description": "Shared web dashboard for monitoring GPU/DCU server occupancy.",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/history-store.test.js"
   },
   "engines": {
     "node": ">=18"

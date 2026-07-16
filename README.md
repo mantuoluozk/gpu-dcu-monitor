@@ -287,6 +287,8 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `vllm`、`LLaMA-Factory`、`stable-diffusion-webui`、`model-downloader-main` 等框架/工程目录会被过滤；它们下面真正的模型子目录仍可被识别。
 - `BACKUP_INTERVAL_MS`：服务器配置定期备份间隔，默认 `86400000` 毫秒。
 - `BACKUP_RETENTION`：服务器配置备份保留份数，默认 `30`。
+- `HISTORY_FINE_DAYS`：GPU/DCU 历史一分钟数据保留天数，默认 `90`；更早数据自动聚合为五分钟并 gzip 压缩永久保存。
+- `HISTORY_MAX_RANGE_DAYS`：历史查询或单次 CSV 导出的最大时间跨度，默认 `366` 天。
 - `SITE_ID`：当前站点 ID，默认 `local`。
 - `SITE_NAME`：当前站点显示名称，默认 `本地中心`。
 - `SITE_DESCRIPTION`：当前站点说明，默认 `共享测试资源`。
@@ -316,3 +318,5 @@ ss -lntp | grep 3066
 - 如果 NVIDIA 服务器偶发超时，可以调大 `SSH_TIMEOUT_MS`。
 - 如果多人共同查看，建议部署在一台固定机器上，由这台机器统一采集。
 - 模型资产盘点默认不计算目录大小，避免对大模型盘产生明显 IO 压力。
+- GPU/DCU 历史数据保存在 `data/history/`，不会进入 Git 或普通代码部署包；迁移部署服务器时需要单独备份和恢复该目录。
+- 历史记录从功能启用后开始生成。每 10 秒采集只更新最新状态和当前分钟聚合器，每分钟才追加一次历史记录，不会把全部原始采样长期留在内存。

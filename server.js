@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
+const { HistoryStore } = require("./history-store");
 
 const PORT = Number(process.env.PORT || 3066);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
@@ -56,6 +57,11 @@ const SITE_CONFIG_PATH = path.join(DATA_DIR, "sites.json");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const PUBLIC_DIR = path.join(ROOT, "public");
 const CHANGELOG_PATH = path.join(ROOT, "CHANGELOG.md");
+const HISTORY_DIR = path.join(DATA_DIR, "history");
+const HISTORY_FINE_DAYS = clampInt(process.env.HISTORY_FINE_DAYS, 1, 3650, 90);
+const HISTORY_MAX_RANGE_DAYS = clampInt(process.env.HISTORY_MAX_RANGE_DAYS, 1, 3650, 366);
+const HISTORY_BUCKET_MS = clampInt(process.env.HISTORY_BUCKET_MS, 1000, 60000, 60000);
+const historyStore = new HistoryStore({ root: HISTORY_DIR, bucketMs: HISTORY_BUCKET_MS, fineDays: HISTORY_FINE_DAYS, maxRangeDays: HISTORY_MAX_RANGE_DAYS });
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -570,6 +576,7 @@ async function refreshServer(server, options = {}) {
       status.summary = `${busyCount}/${totalCount} 占用`;
     }
     statusCache.set(server.id, status);
+    historyStore.record(server, status);
     if (server.gpuCount !== totalCount || shouldRefreshGpuModels) {
       persistDetectedServerInfo(server.id, {
         gpuCount: totalCount,
@@ -594,6 +601,7 @@ async function refreshServer(server, options = {}) {
       error: error.message
     };
     statusCache.set(server.id, status);
+    historyStore.record(server, status);
     return { id: server.id, ok: false, error: error.message };
   }
 }
@@ -1729,6 +1737,29 @@ async function handleApi(req, res) {
     return;
   }
 
+  if (req.method === "GET" && parts[0] === "api" && parts[1] === "servers" && parts[2] && parts[3] === "history") {
+    const servers = loadServers();
+    const server = servers.find((item) => item.id === parts[2]);
+    if (!server) {
+      sendJson(res, 404, { error: "服务器不存在" });
+      return;
+    }
+    try {
+      const options = { from: url.searchParams.get("from"), to: url.searchParams.get("to"), device: url.searchParams.get("device") };
+      if (parts[4] === "export") {
+        const csv = historyStore.exportCsv(server, options);
+        const filename = `gpu-history-${server.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "no-store" });
+        res.end(`\ufeff${csv}`);
+      } else {
+        sendJson(res, 200, historyStore.query(server.id, options));
+      }
+    } catch (error) {
+      sendJson(res, 400, { error: error.message });
+    }
+    return;
+  }
+
   if (req.method === "POST" && parts[0] === "api" && parts[1] === "servers" && parts[2] && parts[3] === "refresh") {
     const servers = loadServers();
     const server = servers.find((item) => item.id === parts[2]);
@@ -1828,6 +1859,7 @@ const server = http.createServer((req, res) => {
 });
 
 ensureDataFile();
+historyStore.compact();
 backupServerConfig("startup");
 refreshAll().catch((error) => console.error(error));
 setTimeout(() => {
@@ -1839,6 +1871,11 @@ setInterval(() => {
 setInterval(() => {
   backupServerConfig("scheduled");
 }, BACKUP_INTERVAL_MS);
+setInterval(() => {
+  try { historyStore.compact(); } catch (error) { console.error(`History compaction failed: ${error.message}`); }
+}, 24 * 60 * 60 * 1000);
+process.on("SIGINT", () => { historyStore.flushAll(); process.exit(0); });
+process.on("SIGTERM", () => { historyStore.flushAll(); process.exit(0); });
 scheduleDailyAssetRefresh();
 
 server.listen(PORT, "0.0.0.0", () => {
