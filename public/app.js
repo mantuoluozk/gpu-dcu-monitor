@@ -761,24 +761,66 @@ function HistoryPanel({ server, totalCount }) {
 function HistoryStat({ label, value }) { return h("div", { className: "history-stat" }, h("span", null, label), h("strong", null, value)); }
 
 function HistoryChart({ points, metric }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
   const width = 1000;
-  const height = 190;
+  const height = 260;
+  const plot = { left: 62, right: 18, top: 18, bottom: 42 };
+  const plotWidth = width - plot.left - plot.right;
+  const plotHeight = height - plot.top - plot.bottom;
   const valid = points.map((point) => Number(point[metric])).filter(Number.isFinite);
-  const max = metric === "utilization" || metric === "memoryUtilization" ? 100 : Math.max(1, ...valid) * 1.08;
+  const max = historyAxisMax(valid, metric);
+  const ticks = [0, .25, .5, .75, 1];
   const segments = [];
   let current = [];
   points.forEach((point, index) => {
     const value = Number(point[metric]);
     if (point.state !== "online" || !Number.isFinite(value)) { if (current.length) segments.push(current); current = []; return; }
-    current.push(`${(index / Math.max(1, points.length - 1)) * width},${14 + (1 - Math.min(value, max) / max) * 150}`);
+    current.push(`${plot.left + (index / Math.max(1, points.length - 1)) * plotWidth},${plot.top + (1 - Math.min(value, max) / max) * plotHeight}`);
   });
   if (current.length) segments.push(current);
+  const hovered = hoverIndex === null ? null : points[hoverIndex];
+  const hoverValue = hovered ? Number(hovered[metric]) : null;
+  const hoverX = hoverIndex === null ? null : plot.left + (hoverIndex / Math.max(1, points.length - 1)) * plotWidth;
+  const hoverY = Number.isFinite(hoverValue) ? plot.top + (1 - Math.min(hoverValue, max) / max) * plotHeight : null;
+  const unit = historyMetricUnit(metric);
   return h("div", { className: "history-chart-wrap" },
-    h("svg", { className: "history-chart", viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: "none" },
-      [0, .25, .5, .75, 1].map((ratio) => h("line", { key: ratio, x1: 0, x2: width, y1: 14 + ratio * 150, y2: 14 + ratio * 150, className: "history-grid-line" })),
-      segments.map((segment, index) => h("polyline", { key: index, points: segment.join(" "), className: "history-line", fill: "none" }))
+    h("div", { className: "history-chart-title" },
+      h("span", { className: "history-legend-dot" }),
+      h("strong", null, historyMetricLabel(metric)),
+      h("em", null, deviceChartCaption(points)),
+      h("span", { className: "history-chart-unit" }, `单位：${unit}`)
     ),
-    h("div", { className: "history-axis" }, h("span", null, formatHistoryTime(points[0]?.t)), h("strong", null, `最高 ${formatHistoryMetric(max, metric)}`), h("span", null, formatHistoryTime(points[points.length - 1]?.t)))
+    h("svg", {
+      className: "history-chart",
+      viewBox: `0 0 ${width} ${height}`,
+      preserveAspectRatio: "none",
+      onMouseMove: (event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const relative = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        setHoverIndex(Math.round(relative * Math.max(0, points.length - 1)));
+      },
+      onMouseLeave: () => setHoverIndex(null)
+    },
+      h("rect", { x: plot.left, y: plot.top, width: plotWidth, height: plotHeight, className: "history-plot-bg" }),
+      ticks.map((ratio) => {
+        const y = plot.top + ratio * plotHeight;
+        const value = max * (1 - ratio);
+        return h(React.Fragment, { key: ratio },
+          h("line", { x1: plot.left, x2: width - plot.right, y1: y, y2: y, className: "history-grid-line" }),
+          h("text", { x: plot.left - 11, y: y + 4, textAnchor: "end", className: "history-y-label" }, formatAxisTick(value))
+        );
+      }),
+      h("line", { x1: plot.left, x2: plot.left, y1: plot.top, y2: height - plot.bottom, className: "history-axis-line" }),
+      h("line", { x1: plot.left, x2: width - plot.right, y1: height - plot.bottom, y2: height - plot.bottom, className: "history-axis-line" }),
+      segments.map((segment, index) => h("polyline", { key: index, points: segment.join(" "), className: "history-line", fill: "none" }))
+      ,hoverX !== null ? h("line", { x1: hoverX, x2: hoverX, y1: plot.top, y2: height - plot.bottom, className: "history-hover-line" }) : null
+      ,hoverX !== null && hoverY !== null ? h("circle", { cx: hoverX, cy: hoverY, r: 5, className: "history-hover-dot" }) : null
+    ),
+    h("div", { className: "history-axis" }, h("span", null, formatHistoryTime(points[0]?.t)), h("span", null, formatHistoryTime(points[Math.floor(points.length / 2)]?.t)), h("span", null, formatHistoryTime(points[points.length - 1]?.t))),
+    hovered ? h("div", { className: "history-tooltip", style: { left: `${Math.min(82, Math.max(8, (hoverIndex / Math.max(1, points.length - 1)) * 100))}%` } },
+      h("strong", null, hovered.state === "online" && Number.isFinite(hoverValue) ? formatHistoryMetric(hoverValue, metric) : "离线 / 无数据"),
+      h("span", null, formatHistoryTimeFull(hovered.t))
+    ) : null
   );
 }
 
@@ -790,6 +832,17 @@ function historyRange(value) {
 function formatHistoryPercent(value) { return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}%` : "-"; }
 function formatHistoryTime(value) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"; }
 function formatHistoryMetric(value, metric) { if (!Number.isFinite(Number(value))) return "-"; return metric === "temperatureC" ? `${Math.round(value)}℃` : metric === "powerW" ? `${Math.round(value)}W` : `${Math.round(value)}%`; }
+function formatHistoryTimeFull(value) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-"; }
+function historyMetricLabel(metric) { return metric === "memoryUtilization" ? "显存使用率" : metric === "temperatureC" ? "设备温度" : metric === "powerW" ? "设备功耗" : "算力使用率"; }
+function historyMetricUnit(metric) { return metric === "temperatureC" ? "℃" : metric === "powerW" ? "W" : "%"; }
+function historyAxisMax(values, metric) {
+  if (metric === "utilization" || metric === "memoryUtilization") return 100;
+  const peak = values.length ? Math.max(...values) : 1;
+  const step = metric === "temperatureC" ? 20 : peak <= 200 ? 50 : 100;
+  return Math.max(step, Math.ceil(peak / step) * step);
+}
+function formatAxisTick(value) { return value >= 100 ? Math.round(value) : Number(value.toFixed(1)); }
+function deviceChartCaption(points) { return `${points.length} 个趋势点 · 离线自动断线`; }
 
 function MetaBox({ label, value, tone }) {
   return h("div", { className: `meta-box ${tone || ""}` }, h("span", null, label), h("strong", null, value));
