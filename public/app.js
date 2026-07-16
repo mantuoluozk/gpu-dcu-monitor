@@ -674,28 +674,55 @@ function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClos
   const kind = getServerKind(server);
   const totalCount = status.totalCount || server.gpuCount || 0;
   return h("div", { className: "detail-backdrop", role: "presentation", onMouseDown: onClose },
-    h("aside", { className: "detail detail-sheet", onMouseDown: (event) => event.stopPropagation() },
-    h("div", { className: "detail-head" },
-      h("div", null,
-        h("p", { className: "eyebrow" }, `${totalCount ? `${totalCount}卡服务器` : "自动识别卡数"} · ${commandLabel(server.command)}`),
-        h("h3", null, server.name),
-        h("code", null, `${server.host}:${server.port}`)
+    h("aside", { className: "detail detail-sheet detail-v3", onMouseDown: (event) => event.stopPropagation() },
+    h("div", { className: "detail-nav" },
+      h("div", { className: "detail-brand" },
+        h("span", { className: "detail-brand-mark" }),
+        h("strong", null, "GPU/DCU 资源观测台"),
+        h("em", null, "Server telemetry")
       ),
       h("div", { className: "detail-actions" },
-        h("button", { className: "ghost-action detail-refresh", type: "button", onClick: onRefresh, disabled: refreshing }, refreshing ? "刷新中" : "刷新当前"),
+        h("button", { className: "ghost-action detail-refresh", type: "button", onClick: onRefresh, disabled: refreshing }, refreshing ? "刷新中" : "刷新数据"),
         h("button", { className: "icon-button", type: "button", onClick: () => openDialog(server), "aria-label": "编辑服务器" }, "✎"),
         h("button", { className: "icon-button", type: "button", onClick: onClose, "aria-label": "关闭详情" }, "×")
       )
     ),
-    h("div", { className: "detail-meta" },
-      h(MetaBox, { label: "状态", value: kindLabel(kind), tone: kind }),
-      h(MetaBox, { label: "占用", value: totalCount ? `${status.busyCount || 0}/${totalCount}` : "识别中" }),
-      h(MetaBox, { label: "分组", value: serverGroup(server) }),
-      h(MetaBox, { label: "延迟", value: status.latencyMs ? `${status.latencyMs}ms` : "-" }),
-      h(MetaBox, { label: "CPU", value: formatPercent(system.cpuUtilization), tone: occupancyClass(system.cpuUtilization) }),
-      h(MetaBox, { label: "内存", value: formatPercent(system.memoryUtilization), tone: occupancyClass(system.memoryUtilization) })
+    h("section", { className: "detail-hero" },
+      h("div", { className: "detail-hero-copy" },
+        h("span", { className: `detail-status-pill ${kind}` }, h("i"), `${kindLabel(kind)} · ${commandLabel(server.command)}`),
+        h("p", { className: "detail-kicker" }, `${totalCount ? `${totalCount} 卡服务器` : "自动识别卡数"} / ${serverGroup(server)}`),
+        h("h2", null, server.name),
+        h("p", { className: "detail-address" }, `${server.user || "root"}@${server.host}:${server.port}`),
+        h("p", { className: "detail-hero-desc" }, server.note || `集中查看这台服务器的硬件状态、${commandLabel(server.command)} 实时负载与历史使用趋势。`),
+        h("div", { className: "detail-hero-tags" },
+          h("span", null, bestCpuModel(system)),
+          h("span", null, modelSummary(server) || `${commandLabel(server.command)} 型号识别中`)
+        )
+      ),
+      h("div", { className: "detail-live-panel" },
+        h("div", { className: "detail-live-head" },
+          h("div", null, h("span", null, "LIVE STATUS"), h("strong", null, "实时遥测")),
+          h("em", null, status.updatedAt ? `更新于 ${formatTime(status.updatedAt)}` : "等待首次采集")
+        ),
+        h("div", { className: "detail-occupancy" },
+          h("div", { className: `detail-occupancy-ring ${kind}`, style: { "--detail-progress": `${totalCount ? Math.round((status.busyCount || 0) * 100 / totalCount) : 0}%` } },
+            h("strong", null, totalCount ? `${status.busyCount || 0}/${totalCount}` : "-"),
+            h("span", null, "设备占用")
+          ),
+          h("div", { className: "detail-meta" },
+            h(MetaBox, { label: "CPU 使用率", value: formatPercent(system.cpuUtilization), tone: occupancyClass(system.cpuUtilization) }),
+            h(MetaBox, { label: "内存使用率", value: formatPercent(system.memoryUtilization), tone: occupancyClass(system.memoryUtilization) }),
+            h(MetaBox, { label: "响应延迟", value: status.latencyMs ? `${status.latencyMs} ms` : "-" }),
+            h(MetaBox, { label: "运行时间", value: formatDuration(system.uptimeSeconds) })
+          )
+        ),
+        h("div", { className: "detail-live-foot" }, h("span", null, "SSH PROBE"), h("i"), h("span", null, status.state === "online" ? "CONNECTED" : "DISCONNECTED"))
+      )
     ),
     status.error ? h("div", { className: "asset-error" }, status.error) : null,
+    h("div", { className: "detail-section-nav" },
+      h("span", null, "01  主机"), h("span", null, "02  加速卡"), h("span", null, "03  使用历史"), h("span", null, "04  资产")
+    ),
     h("div", { className: "detail-section-grid" },
       h(CpuPanel, { system }),
       h(MemoryPanel, { system }),
