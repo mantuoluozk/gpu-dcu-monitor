@@ -318,6 +318,7 @@ h1 {
 
 .primary-action,
 .ghost-action,
+.admin-action,
 .mini-copy {
   display: inline-flex;
   align-items: center;
@@ -2867,7 +2868,7 @@ body {
 .search-box span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .search-box input { min-height: 40px; padding: 0 12px; font-size: 12px; }
 .top-actions { flex-wrap: nowrap; }
-.top-actions .ghost-action, .top-actions .primary-action { min-height: 38px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
+.top-actions .ghost-action, .top-actions .admin-action, .top-actions .primary-action { min-height: 38px; border-radius: 10px; padding: 0 9px; font-size: 12px; white-space: nowrap; }
 .top-actions .primary-action { background: linear-gradient(135deg, #4f7cff, #7457ed); box-shadow: 0 7px 17px rgba(79, 124, 255, 0.22); }
 
 .dashboard-view { gap: 10px; padding: 12px 14px 14px; background: radial-gradient(circle at 8% 0%, rgba(77, 148, 255, 0.055), transparent 24%); }
@@ -2992,7 +2993,8 @@ body {
 }
 
 .primary-action,
-.ghost-action {
+.ghost-action,
+.admin-action {
   min-height: 31px;
   border-radius: 8px;
   padding: 0 9px;
@@ -3104,14 +3106,9 @@ body {
 
 /* Single-admin edit lock: monitoring stays public while configuration controls stay explicit. */
 .admin-action {
-  min-height: 31px;
   border: 1px solid #d9e1e8;
-  border-radius: 8px;
   background: rgba(255, 255, 255, 0.82);
   color: #596875;
-  padding: 0 10px;
-  font-size: 11px;
-  font-weight: 750;
   white-space: nowrap;
   cursor: pointer;
 }
