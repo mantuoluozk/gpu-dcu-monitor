@@ -47,5 +47,5 @@ try {
   assert.strictEqual(afterCompact.points[0].cpuUtilization, 30);
   console.log("history-store tests passed");
 } finally {
-  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmdirSync(root, { recursive: true });
 }
