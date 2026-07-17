@@ -414,7 +414,7 @@ function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, s
       }, `${group.name} ${group.count}`))
     ),
     servers.length
-      ? h("div", { className: "server-grid" }, servers.map((server) => h(ServerCard, {
+      ? h("div", { className: `server-grid server-count-${Math.min(servers.length, 3)}` }, servers.map((server) => h(ServerCard, {
         key: server.id,
         server,
         selected: server.id === selectedId,
