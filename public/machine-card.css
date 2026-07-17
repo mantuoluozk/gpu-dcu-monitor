@@ -737,6 +737,71 @@
   }
 }
 
+/* Home card v3 — white instruments, local status color, readable telemetry. */
+.machine-card {
+  border-color: #e1e6ea;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 7px 24px rgba(37, 55, 73, 0.065);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+.machine-card:hover { transform: translateY(-2px); border-color: rgba(79, 124, 255, 0.3); box-shadow: 0 16px 38px rgba(35, 52, 70, 0.12); }
+.machine-card.selected { border-color: rgba(79, 124, 255, 0.55); box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1), 0 14px 34px rgba(35, 52, 70, 0.1); }
+.machine-card .card-header { padding: 13px 14px 12px; border-bottom-color: #e8ecef; }
+.machine-card .machine-icon { width: 35px; height: 35px; border-radius: 11px; }
+.machine-card .machine-icon.gpu { background: linear-gradient(135deg, #36ca91, #159e74); box-shadow: 0 6px 15px rgba(21, 158, 116, 0.2); }
+.machine-card .machine-icon.dcu { background: linear-gradient(135deg, #7d78f4, #6652df); box-shadow: 0 6px 15px rgba(102, 82, 223, 0.2); }
+.machine-card .title-block h2 { font-size: 16px; letter-spacing: -0.025em; }
+.machine-card .ip { color: #778490; font-size: 10.5px; }
+.machine-card .status-badge { padding: 4px 9px; font-size: 10.5px; }
+.machine-card .icon-btn { width: 29px; height: 29px; border-color: #e1e6ea; background: #fff; }
+
+.machine-card .hero { position: relative; padding: 13px; border-bottom: 1px solid #e8ecef; background: radial-gradient(circle at 7% 26%, rgba(79, 124, 255, 0.085), transparent 27%), linear-gradient(110deg, #fbfdff, #fff); }
+.machine-card .hero::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: #20b981; opacity: 0.8; }
+.machine-card .hero.busy { background: radial-gradient(circle at 7% 26%, rgba(245, 158, 11, 0.1), transparent 28%), linear-gradient(110deg, #fffdfa, #fff); }
+.machine-card .hero.busy::after { background: #f59e0b; }
+.machine-card .hero.alert { background: radial-gradient(circle at 7% 26%, rgba(239, 68, 68, 0.1), transparent 28%), linear-gradient(110deg, #fffafa, #fff); }
+.machine-card .hero.alert::after { background: #ef4444; }
+.machine-card .hero.offline { background: radial-gradient(circle at 7% 26%, rgba(148, 163, 184, 0.12), transparent 28%), linear-gradient(110deg, #fafbfc, #fff); }
+.machine-card .hero.offline::after { background: #94a3b8; }
+.machine-card .hero-info .label { color: #64717d; font-size: 10px; }
+.machine-card .hero-info .sub { color: #65727d; font-size: 10px; }
+.machine-card .hero-hw { border-color: #e5e9ed; background: rgba(255, 255, 255, 0.82); }
+.machine-card .hero-hw.accelerator.idle, .machine-card .hero-hw.acceler.busy, .machine-card .hero-hw.acceler.alert { border-color: #e5e9ed; background: rgba(255, 255, 255, 0.82); }
+.machine-card .hero-hw .hw-copy strong { font-size: 11.5px; }
+.machine-card .hero-hw .hw-copy em { color: #66737e; font-size: 10px; }
+
+.machine-card .quick-stats { border-bottom-color: #e8ecef; background: #fff; }
+.machine-card .quick-stat { padding: 10px 7px 9px; }
+.machine-card .quick-stat .label { color: #65727d; font-size: 10px; }
+.machine-card .quick-stat .value { font-size: 14.5px; }
+.machine-card .quick-stat .extra { color: #75818c; font-size: 9px; }
+.machine-card .gpu-section { padding: 11px 13px 10px; background: #fcfdfe; }
+.machine-card .section-header .title { color: #56636f; font-size: 11px; letter-spacing: 0.04em; }
+.machine-card .gpu-grid { gap: 6px; }
+.machine-card .gpu-grid.device-layout-1 { grid-template-columns: minmax(0, 1fr); }
+.machine-card .gpu-grid.device-layout-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.machine-card .gpu-grid.device-layout-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.machine-card .gpu-card { min-height: 54px; padding: 7px; border-color: #e4e9ed; border-radius: 9px; background: #fff; }
+.machine-card .device-layout-1 .gpu-card { min-height: 66px; padding: 9px 11px; }
+.machine-card .device-layout-1 .gpu-id, .machine-card .device-layout-2 .gpu-id { font-size: 10px; }
+.machine-card .device-layout-1 .gpu-util, .machine-card .device-layout-2 .gpu-util { font-size: 14px; }
+.machine-card .device-layout-1 .gpu-row2, .machine-card .device-layout-2 .gpu-row2 { font-size: 10px; }
+.machine-card .gpu-id { color: #6f7c87; font-size: 9px; }
+.machine-card .gpu-util { font-size: 13px; }
+.machine-card .gpu-row2 { color: #74808b; font-size: 9px; }
+.machine-card .mem-text { color: #7a8792; font-size: 8px; }
+
+.machine-card .footer { padding: 10px 13px; border-top-color: #e8ecef; background: #fff; }
+.machine-card .footer-stat .label { color: #77838e; font-size: 9px; }
+.machine-card .footer-stat .value { font-size: 13px; }
+.machine-card .spark-wrap { color: #75818c; font-size: 9px; }
+.machine-card .heartbeat { color: #586571; font-size: 9.5px; }
+
+@media (max-width: 900px) {
+  .server-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Compact overview layout: keep v2 colors and motion, fit three cards per row. */
 .server-grid {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -1061,3 +1126,35 @@
     width: 100%;
   }
 }
+
+/* Final home-v3 readability and adaptive-device layer. */
+.machine-card .title-block h2 { font-size: 16px; }
+.machine-card .ip { color: #778490; font-size: 10.5px; }
+.machine-card .status-badge { padding: 4px 9px; font-size: 10.5px; }
+.machine-card .hero-info .label, .machine-card .hero-info .sub { font-size: 10px; }
+.machine-card .hero.idle { background: radial-gradient(circle at 7% 26%, rgba(32, 185, 129, 0.075), transparent 28%), linear-gradient(110deg, #fbfefd, #fff); }
+.machine-card .hero.busy { background: radial-gradient(circle at 7% 26%, rgba(245, 158, 11, 0.09), transparent 28%), linear-gradient(110deg, #fffdfa, #fff); }
+.machine-card .hero.alert { background: radial-gradient(circle at 7% 26%, rgba(239, 68, 68, 0.09), transparent 28%), linear-gradient(110deg, #fffafa, #fff); }
+.machine-card .hero.offline { background: radial-gradient(circle at 7% 26%, rgba(148, 163, 184, 0.1), transparent 28%), linear-gradient(110deg, #fafbfc, #fff); }
+.machine-card .hero-hw .hw-copy strong { overflow: visible; font-size: 11.5px; line-height: 1.12; text-overflow: clip; white-space: normal; }
+.machine-card .hero-hw .hw-copy em { color: #66737e; font-size: 10px; }
+.machine-card .quick-stat .label { font-size: 10px; }
+.machine-card .quick-stat .extra { font-size: 9px; }
+.machine-card .section-header .title { font-size: 11px; }
+.machine-card .gpu-grid { gap: 6px; }
+.machine-card .gpu-grid.device-layout-1 { grid-template-columns: minmax(0, 1fr); }
+.machine-card .gpu-grid.device-layout-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.machine-card .gpu-grid.device-layout-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.machine-card .gpu-card { min-height: 54px; padding: 7px; }
+.machine-card .device-layout-1 .gpu-card { min-height: 66px; padding: 9px 11px; }
+.machine-card .gpu-id { font-size: 9px; }
+.machine-card .gpu-util { font-size: 13px; }
+.machine-card .gpu-row2 { font-size: 9px; }
+.machine-card .mem-text { font-size: 8px; }
+.machine-card .device-layout-1 .gpu-id, .machine-card .device-layout-2 .gpu-id { font-size: 10px; }
+.machine-card .device-layout-1 .gpu-util, .machine-card .device-layout-2 .gpu-util { font-size: 14px; }
+.machine-card .device-layout-1 .gpu-row2, .machine-card .device-layout-2 .gpu-row2 { font-size: 10px; }
+.machine-card .footer-stat .label { font-size: 9px; }
+.machine-card .footer-stat .value { font-size: 13px; }
+.machine-card .spark-wrap { font-size: 9px; }
+.machine-card .heartbeat { font-size: 9.5px; }

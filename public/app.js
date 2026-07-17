@@ -330,21 +330,21 @@ function Sidebar({ siteConfig, totals, filter, setFilter, lastRefresh }) {
   const current = siteConfig.current || DEFAULT_SITE;
   return h("aside", { className: "sidebar" },
     h("div", { className: "brand" },
-      h("div", { className: "brand-mark" }, "DCU"),
+      h("div", { className: "brand-mark", "aria-hidden": "true" }, h("span")),
       h("div", null,
         h("h1", null, current.name || DEFAULT_SITE.name),
         h("p", null, lastRefresh ? `更新 ${formatTime(lastRefresh)}` : "等待刷新")
       )
     ),
     siteConfig.sites?.length ? h("nav", { className: "site-switcher", "aria-label": "站点切换" },
-      h("div", { className: "section-label" }, "Sites"),
+      h("div", { className: "section-label" }, "站点"),
       h("div", { className: "site-link-list" }, siteConfig.sites.map((site) => h("a", {
         key: site.url || site.name,
         className: `site-link${site.current ? " active" : ""}`,
         href: site.url
       }, h("strong", null, site.name), site.description ? h("span", null, site.description) : null)))
     ) : null,
-    h("div", { className: "section-label" }, "Status"),
+    h("div", { className: "section-label" }, "状态"),
     h("div", { className: "filters", role: "tablist", "aria-label": "服务器状态筛选" },
       FILTERS.map(([value, label]) => h("button", {
         key: value,
@@ -354,7 +354,7 @@ function Sidebar({ siteConfig, totals, filter, setFilter, lastRefresh }) {
       }, h("span", null, label), h("strong", null, value === "all" ? totals.servers : totals[`${value}Servers`] || 0)))
     ),
     h("div", { className: "sidebar-note" },
-      h("span", null, "Dispatch"),
+      h("span", null, "调度概况"),
       h("strong", null, `当前 ${totals.freeCards}/${totals.cards || 0} 张卡空闲，点击机器查看完整详情。`)
     )
   );
@@ -396,12 +396,12 @@ function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, s
       h("div", { className: "hero-main" },
         h("span", null, "RESOURCE POOL"),
         h("strong", null, `${totals.freeCards}/${totals.cards || 0}`),
-        h("em", null, "空闲卡 / 总卡数")
+        h("em", null, "空闲设备 / 加速卡总数")
       ),
       h("div", { className: "stat-strip" },
-        h(StatTile, { label: "服务器", value: totals.servers }),
-        h(StatTile, { label: "占用卡", value: totals.busyCards, tone: "warn" }),
-        h(StatTile, { label: "离线", value: totals.offlineServers, tone: "danger" })
+        h(StatTile, { label: "服务器总数", value: totals.servers, unit: "台" }),
+        h(StatTile, { label: "占用设备", value: totals.busyCards, unit: "张", tone: "warn" }),
+        h(StatTile, { label: "离线服务器", value: totals.offlineServers, unit: "台", tone: "danger" })
       )
     ),
     h("div", { className: "group-panel" },
@@ -425,8 +425,8 @@ function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, s
   );
 }
 
-function StatTile({ label, value, tone }) {
-  return h("div", { className: `stat-tile ${tone || ""}` }, h("span", null, label), h("strong", null, value));
+function StatTile({ label, value, unit, tone }) {
+  return h("div", { className: `stat-tile ${tone || ""}` }, h("span", null, label), h("strong", null, value, unit ? h("em", null, unit) : null));
 }
 
 const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit }) {
@@ -511,7 +511,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       h("div", { className: "section-header" },
         h("span", { className: "title" }, `${deviceLabel} 设备`)
       ),
-      h("div", { className: "gpu-grid" }, deviceCards(devices, totalCount, machineState))
+      h("div", { className: `gpu-grid device-layout-${Math.min(Math.max(totalCount, 1), 8)}` }, deviceCards(devices, totalCount, machineState))
     ),
     h("div", { className: "footer" },
       h("div", { className: "footer-stats" },
