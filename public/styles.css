@@ -1828,7 +1828,7 @@ code {
 .history-controls { flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .history-controls select { height: 34px; border: 1px solid var(--rail); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 0 9px; }
 .history-export { display: inline-flex; align-items: center; text-decoration: none; }
-.history-summary { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: 8px; }
+.history-summary { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 8px; }
 .history-stat { border: 1px solid var(--rail); border-radius: 8px; background: var(--panel); padding: 9px 10px; }
 .history-stat span, .history-note { color: var(--muted); font-size: 12px; }
 .history-stat strong { display: block; margin-top: 3px; font-size: 16px; }

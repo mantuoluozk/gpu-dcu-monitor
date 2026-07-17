@@ -1748,7 +1748,7 @@ async function handleApi(req, res) {
       const options = { from: url.searchParams.get("from"), to: url.searchParams.get("to"), device: url.searchParams.get("device") };
       if (parts[4] === "export") {
         const csv = historyStore.exportCsv(server, options);
-        const filename = `gpu-history-${server.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+        const filename = `server-history-${server.id}-${new Date().toISOString().slice(0, 10)}.csv`;
         res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "no-store" });
         res.end(`\ufeff${csv}`);
       } else {

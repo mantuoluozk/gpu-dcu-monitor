@@ -107,11 +107,12 @@ class HistoryStore {
   exportCsv(server, options) {
     const range = normalizeRange(options, this.maxRangeDays);
     const rows = this.readRange(server.id, range.from, range.to);
-    const lines = ["timestamp,server_id,server_name,host,state,device_index,sample_count,utilization_avg,utilization_max,memory_utilization_avg,memory_utilization_max,memory_used_mib_avg,memory_total_mib,temperature_c_avg,temperature_c_max,power_w_avg,power_w_max,busy"];
+    const lines = ["timestamp,server_id,server_name,host,state,sample_count,cpu_utilization_avg,cpu_utilization_max,device_index,device_sample_count,utilization_avg,utilization_max,memory_utilization_avg,memory_utilization_max,memory_used_mib_avg,memory_total_mib,temperature_c_avg,temperature_c_max,power_w_avg,power_w_max,busy"];
     for (const row of rows) {
-      if (!row.d.length) lines.push(csvLine([row.t, server.id, server.name, server.host, row.s, "", row.n, "", "", "", "", "", "", "", "", "", "", ""]));
+      const cpu = Array.isArray(row.c) ? row.c : [null, null];
+      if (!row.d.length) lines.push(csvLine([row.t, server.id, server.name, server.host, row.s, row.n, cpu[0], cpu[1], "", "", "", "", "", "", "", "", "", "", "", "", row.b ? 1 : 0]));
       for (const device of row.d) {
-        lines.push(csvLine([row.t, server.id, server.name, server.host, row.s, ...device, row.b ? 1 : 0]));
+        lines.push(csvLine([row.t, server.id, server.name, server.host, row.s, row.n, cpu[0], cpu[1], ...device, row.b ? 1 : 0]));
       }
     }
     return lines.join("\r\n") + "\r\n";
@@ -119,7 +120,7 @@ class HistoryStore {
 }
 
 function createBucket(server, timestamp) {
-  return { t: timestamp, command: server.command, online: 0, offline: 0, devices: new Map() };
+  return { t: timestamp, command: server.command, online: 0, offline: 0, cpuUtilization: createMetric(), devices: new Map() };
 }
 
 function addSample(bucket, status) {
@@ -128,6 +129,7 @@ function addSample(bucket, status) {
     return;
   }
   bucket.online += 1;
+  addMetric(bucket.cpuUtilization, status.system && status.system.cpuUtilization);
   for (const gpu of status.gpus || []) {
     const item = bucket.devices.get(gpu.index) || { index: gpu.index, count: 0, metrics: Array.from({ length: 6 }, createMetric) };
     item.count += 1;
@@ -139,6 +141,7 @@ function addSample(bucket, status) {
 
 function createMetric() { return { sum: 0, count: 0, max: null }; }
 function addMetric(metric, value) {
+  if (value === null || value === undefined || value === "") return;
   const number = Number(value);
   if (!Number.isFinite(number)) return;
   metric.sum += number;
@@ -153,19 +156,23 @@ function finalizeBucket(bucket) {
     return [item.index, item.count, avg(m[0]), roundOrNull(m[0].max), avg(m[1]), roundOrNull(m[1].max), avg(m[2]), avg(m[3]), avg(m[4]), roundOrNull(m[4].max), avg(m[5]), roundOrNull(m[5].max)];
   });
   const busy = devices.some((d) => (d[3] !== null && d[3] >= 10) || (d[5] !== null && d[5] >= 10) || (d[6] !== null && d[6] >= 512));
-  return { t: new Date(bucket.t).toISOString(), s: bucket.online ? "online" : "offline", n: bucket.online + bucket.offline, o: bucket.online ? 1 : 0, b: busy ? 1 : 0, bm: busy ? 1 : 0, d: devices };
+  return { t: new Date(bucket.t).toISOString(), s: bucket.online ? "online" : "offline", n: bucket.online + bucket.offline, o: bucket.online ? 1 : 0, b: busy ? 1 : 0, bm: busy ? 1 : 0, c: [avg(bucket.cpuUtilization), roundOrNull(bucket.cpuUtilization.max)], d: devices };
 }
 
 function aggregateRows(rows, bucketMs) {
   const groups = new Map();
   for (const row of rows) {
     const key = Math.floor(new Date(row.t).getTime() / bucketMs) * bucketMs;
-    const group = groups.get(key) || { t: new Date(key).toISOString(), s: "offline", n: 0, o: 0, b: 0, bm: 0, d: new Map() };
+    const group = groups.get(key) || { t: new Date(key).toISOString(), s: "offline", n: 0, o: 0, b: 0, bm: 0, c: createMetric(), d: new Map() };
     group.n += row.n || 0;
     if (row.s === "online") group.s = "online";
     group.o += row.o === undefined ? (row.s === "online" ? 1 : 0) : row.o;
     if (row.b) group.b = 1;
     group.bm += row.bm === undefined ? (row.b ? 1 : 0) : row.bm;
+    if (Array.isArray(row.c)) {
+      addMetric(group.c, row.c[0]);
+      if (Number.isFinite(row.c[1])) group.c.max = group.c.max === null ? row.c[1] : Math.max(group.c.max, row.c[1]);
+    }
     for (const d of row.d || []) {
       const item = group.d.get(d[0]) || { rows: 0, count: 0, values: Array(12).fill(null), sums: Array(12).fill(0) };
       item.rows += 1;
@@ -176,7 +183,7 @@ function aggregateRows(rows, bucketMs) {
     }
     groups.set(key, group);
   }
-  return Array.from(groups.values()).map((group) => ({ ...group, d: Array.from(group.d.entries()).map(([index, item]) => [index, item.count, valueAvg(item, 2), item.values[3], valueAvg(item, 4), item.values[5], valueAvg(item, 6), valueAvg(item, 7), valueAvg(item, 8), item.values[9], valueAvg(item, 10), item.values[11]]) }));
+  return Array.from(groups.values()).map((group) => ({ ...group, c: [avg(group.c), roundOrNull(group.c.max)], d: Array.from(group.d.entries()).map(([index, item]) => [index, item.count, valueAvg(item, 2), item.values[3], valueAvg(item, 4), item.values[5], valueAvg(item, 6), valueAvg(item, 7), valueAvg(item, 8), item.values[9], valueAvg(item, 10), item.values[11]]) }));
 }
 
 function valueAvg(item, index) { return item.values[index] ? round(item.sums[index] / item.values[index]) : null; }
@@ -188,6 +195,8 @@ function summarize(rows) {
   const utilAvg = online.map(machineAverageUtil).filter(Number.isFinite);
   const utilMax = online.flatMap((row) => row.d.map((d) => d[3])).filter(Number.isFinite);
   const memoryAvg = online.map(machineAverageMemory).filter(Number.isFinite);
+  const cpuAvg = online.map((row) => Array.isArray(row.c) ? row.c[0] : null).filter(Number.isFinite);
+  const cpuMax = online.map((row) => Array.isArray(row.c) ? row.c[1] : null).filter(Number.isFinite);
   return {
     totalPoints: rows.length,
     onlinePoints: online.length,
@@ -197,7 +206,9 @@ function summarize(rows) {
     busyPercent: onlineMinutes ? round(busy * 100 / onlineMinutes) : null,
     utilizationAvg: average(utilAvg),
     utilizationMax: utilMax.length ? Math.max(...utilMax) : null,
-    memoryUtilizationAvg: average(memoryAvg)
+    memoryUtilizationAvg: average(memoryAvg),
+    cpuUtilizationAvg: average(cpuAvg),
+    cpuUtilizationMax: cpuMax.length ? Math.max(...cpuMax) : null
   };
 }
 
@@ -212,12 +223,12 @@ function buildPoints(rows, device, maxPoints) {
 
 function pointFromRow(row, device) {
   const devices = device === null ? row.d : row.d.filter((d) => d[0] === device);
-  return { t: row.t, state: row.s, utilization: average(devices.map((d) => d[2]).filter(Number.isFinite)), utilizationMax: maximum(devices.map((d) => d[3])), memoryUtilization: average(devices.map((d) => d[4]).filter(Number.isFinite)), temperatureC: average(devices.map((d) => d[8]).filter(Number.isFinite)), powerW: sumOrNull(devices.map((d) => d[10]).filter(Number.isFinite)), busy: row.b };
+  return { t: row.t, state: row.s, cpuUtilization: Array.isArray(row.c) ? row.c[0] : null, cpuUtilizationMax: Array.isArray(row.c) ? row.c[1] : null, utilization: average(devices.map((d) => d[2]).filter(Number.isFinite)), utilizationMax: maximum(devices.map((d) => d[3])), memoryUtilization: average(devices.map((d) => d[4]).filter(Number.isFinite)), temperatureC: average(devices.map((d) => d[8]).filter(Number.isFinite)), powerW: sumOrNull(devices.map((d) => d[10]).filter(Number.isFinite)), busy: row.b };
 }
 
 function mergePoints(points) {
   const online = points.filter((p) => p.state === "online");
-  return { t: points[0].t, state: online.length ? "online" : "offline", utilization: average(online.map((p) => p.utilization).filter(Number.isFinite)), utilizationMax: maximum(online.map((p) => p.utilizationMax)), memoryUtilization: average(online.map((p) => p.memoryUtilization).filter(Number.isFinite)), temperatureC: average(online.map((p) => p.temperatureC).filter(Number.isFinite)), powerW: average(online.map((p) => p.powerW).filter(Number.isFinite)), busy: online.some((p) => p.busy) ? 1 : 0 };
+  return { t: points[0].t, state: online.length ? "online" : "offline", cpuUtilization: average(online.map((p) => p.cpuUtilization).filter(Number.isFinite)), cpuUtilizationMax: maximum(online.map((p) => p.cpuUtilizationMax)), utilization: average(online.map((p) => p.utilization).filter(Number.isFinite)), utilizationMax: maximum(online.map((p) => p.utilizationMax)), memoryUtilization: average(online.map((p) => p.memoryUtilization).filter(Number.isFinite)), temperatureC: average(online.map((p) => p.temperatureC).filter(Number.isFinite)), powerW: average(online.map((p) => p.powerW).filter(Number.isFinite)), busy: online.some((p) => p.busy) ? 1 : 0 };
 }
 
 function machineAverageUtil(row) { return average(row.d.map((d) => d[2]).filter(Number.isFinite)); }

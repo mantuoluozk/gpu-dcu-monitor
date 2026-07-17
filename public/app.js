@@ -763,7 +763,7 @@ function HistoryPanel({ server, totalCount }) {
   const exportUrl = `/api/servers/${encodeURIComponent(server.id)}/history/export?${new URLSearchParams({ from: dates.from, to: dates.to }).toString()}`;
   return h("section", { className: "detail-section history-section" },
     h("div", { className: "section-head history-head" },
-      h("div", null, h("p", { className: "eyebrow" }, "History"), h("h3", null, "GPU/DCU 历史使用记录")),
+      h("div", null, h("p", { className: "eyebrow" }, "History"), h("h3", null, "GPU/DCU 与 CPU 历史使用记录")),
       h("div", { className: "history-controls" },
         h("select", { value: range, onChange: (event) => setRange(event.target.value) },
           h("option", { value: "24h" }, "最近24小时"), h("option", { value: "7d" }, "最近7天"), h("option", { value: "30d" }, "最近30天"), h("option", { value: "90d" }, "最近90天"), h("option", { value: "365d" }, "最近一年")),
@@ -778,13 +778,14 @@ function HistoryPanel({ server, totalCount }) {
       h(HistoryStat, { label: "繁忙分钟", value: summary.busyMinutes === undefined ? "-" : `${summary.busyMinutes} 分钟` }),
       h(HistoryStat, { label: "平均算力", value: formatHistoryPercent(summary.utilizationAvg) }),
       h(HistoryStat, { label: "峰值算力", value: formatHistoryPercent(summary.utilizationMax) }),
+      h(HistoryStat, { label: "平均 CPU", value: formatHistoryPercent(summary.cpuUtilizationAvg) }),
       h(HistoryStat, { label: "数据完整率", value: formatHistoryPercent(summary.coveragePercent) })
     ),
     h("div", { className: "history-metric-tabs" },
-      [["utilization", "算力"], ["memoryUtilization", "显存"], ["temperatureC", "温度"], ["powerW", "功耗"]].map(([key, label]) => h("button", { type: "button", key, className: metric === key ? "active" : "", onClick: () => setMetric(key) }, label))
+      [["utilization", "算力"], ["memoryUtilization", "显存"], ["cpuUtilization", "CPU"], ["temperatureC", "温度"], ["powerW", "功耗"]].map(([key, label]) => h("button", { type: "button", key, className: metric === key ? "active" : "", onClick: () => setMetric(key) }, label))
     ),
     loading ? h("div", { className: "history-empty" }, "历史数据加载中…") : error ? h("div", { className: "asset-error" }, error) : points.length ? h(HistoryChart, { points, metric }) : h("div", { className: "history-empty" }, "历史记录将在首个完整采集分钟结束后显示"),
-    h("p", { className: "history-note" }, "离线时段显示为空档且不计入 0% 使用率；近 90 天为分钟数据，更早数据为 5 分钟长期数据。")
+    h("p", { className: "history-note" }, "CPU 使用率始终记录整机数据，不受单卡筛选影响；离线时段显示为空档且不计入 0% 使用率；近 90 天为分钟数据，更早数据为 5 分钟长期数据。")
   );
 }
 
@@ -863,10 +864,10 @@ function formatHistoryPercent(value) { return Number.isFinite(Number(value)) ? `
 function formatHistoryTime(value) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"; }
 function formatHistoryMetric(value, metric) { if (!Number.isFinite(Number(value))) return "-"; return metric === "temperatureC" ? `${Math.round(value)}℃` : metric === "powerW" ? `${Math.round(value)}W` : `${Math.round(value)}%`; }
 function formatHistoryTimeFull(value) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-"; }
-function historyMetricLabel(metric) { return metric === "memoryUtilization" ? "显存使用率" : metric === "temperatureC" ? "设备温度" : metric === "powerW" ? "设备功耗" : "算力使用率"; }
+function historyMetricLabel(metric) { return metric === "memoryUtilization" ? "显存使用率" : metric === "cpuUtilization" ? "CPU 使用率" : metric === "temperatureC" ? "设备温度" : metric === "powerW" ? "设备功耗" : "算力使用率"; }
 function historyMetricUnit(metric) { return metric === "temperatureC" ? "℃" : metric === "powerW" ? "W" : "%"; }
 function historyAxisMax(values, metric) {
-  if (metric === "utilization" || metric === "memoryUtilization") return 100;
+  if (metric === "utilization" || metric === "memoryUtilization" || metric === "cpuUtilization") return 100;
   const peak = values.length ? Math.max(...values) : 1;
   const step = metric === "temperatureC" ? 20 : peak <= 200 ? 50 : 100;
   return Math.max(step, Math.ceil(peak / step) * step);
