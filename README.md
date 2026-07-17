@@ -268,6 +268,35 @@ Linux 示例：
 PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 ```
 
+### 管理员编辑权限
+
+服务器列表默认只读。只有配置管理员密码并在网页中解锁后，才会显示添加、编辑和删除入口；后端也会拒绝所有未登录的服务器配置写请求。
+
+先生成密码哈希。密码至少 8 个字符，原始密码不会写入输出或项目文件：
+
+```powershell
+$env:ADMIN_PASSWORD_TO_HASH='替换为你的管理员密码'
+cmd.exe /c npm.cmd run admin:hash
+Remove-Item Env:ADMIN_PASSWORD_TO_HASH
+```
+
+Linux：
+
+```bash
+ADMIN_PASSWORD_TO_HASH='替换为你的管理员密码' npm run admin:hash
+```
+
+将输出的完整 `scrypt$...$...` 字符串配置到启动环境。例如 systemd 服务的 `[Service]` 中加入：
+
+```ini
+Environment="ADMIN_PASSWORD_HASH=scrypt$替换为完整哈希"
+Environment=ADMIN_SESSION_HOURS=8
+```
+
+然后执行 `systemctl daemon-reload && systemctl restart gpu-dcu-monitor`。未配置 `ADMIN_PASSWORD_HASH` 时监控页面仍可正常查看，但服务器增删改会全部锁定。管理员会话仅保存在内存中，服务重启后需要重新解锁。
+
+如果站点已通过 HTTPS 访问，可以额外设置 `ADMIN_COOKIE_SECURE=1`；当前仍使用 HTTP 时不要启用，否则浏览器不会发送管理员 Cookie。
+
 常用配置：
 
 - `PORT`：网页端口，默认 `3066`。
@@ -290,6 +319,11 @@ PORT=3066 POLL_INTERVAL_MS=10000 SSH_TIMEOUT_MS=20000 npm start
 - `BACKUP_RETENTION`：服务器配置备份保留份数，默认 `30`。
 - `HISTORY_FINE_DAYS`：CPU 与 GPU/DCU 历史一分钟数据保留天数，默认 `90`；更早数据自动聚合为五分钟并 gzip 压缩永久保存。
 - `HISTORY_MAX_RANGE_DAYS`：历史查询或单次 CSV 导出的最大时间跨度，默认 `366` 天。
+- `ADMIN_PASSWORD_HASH`：管理员密码的 scrypt 哈希；未配置时服务器信息保持只读。
+- `ADMIN_SESSION_HOURS`：管理员解锁有效时间，默认 `8` 小时，范围 `1`～`168`。
+- `ADMIN_LOGIN_MAX_ATTEMPTS`：同一来源在限流窗口内最多允许的错误密码次数，默认 `5`。
+- `ADMIN_LOGIN_WINDOW_MINUTES`：管理员登录失败限流窗口，默认 `15` 分钟。
+- `ADMIN_COOKIE_SECURE`：设置为 `1` 时管理员 Cookie 仅通过 HTTPS 发送。
 - `SITE_ID`：当前站点 ID，默认 `local`。
 - `SITE_NAME`：当前站点显示名称，默认 `本地中心`。
 - `SITE_DESCRIPTION`：当前站点说明，默认 `共享测试资源`。

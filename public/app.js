@@ -38,6 +38,8 @@ function App() {
   const [changelogLoading, setChangelogLoading] = useState(false);
   const [dialogServer, setDialogServer] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [admin, setAdmin] = useState({ configured: false, authenticated: false, expiresAt: null });
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [toast, setToast] = useState("");
 
   const pollRef = useRef(pollIntervalMs);
@@ -106,6 +108,14 @@ function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    requestJson("/api/auth/status")
+      .then((payload) => { if (!cancelled) setAdmin(payload); })
+      .catch((error) => console.warn(error));
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -191,9 +201,33 @@ function App() {
   const searchPlaceholder = view === "assets" ? "搜索模型名、路径或镜像 tag" : "搜索服务器、IP、分组、型号";
 
   const openDialog = useCallback((server) => {
+    if (!admin.authenticated) {
+      if (admin.configured) setAdminDialogOpen(true);
+      else notify("管理员密码尚未配置，服务器信息保持只读");
+      return;
+    }
     setDialogServer(server || null);
     setDialogOpen(true);
-  }, []);
+  }, [admin.authenticated, admin.configured, notify]);
+
+  const loginAdmin = useCallback(async (password) => {
+    const payload = await requestJson("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+    setAdmin(payload);
+    setAdminDialogOpen(false);
+    notify("管理员权限已解锁");
+  }, [notify]);
+
+  const logoutAdmin = useCallback(async () => {
+    const payload = await requestJson("/api/auth/logout", { method: "POST" });
+    setAdmin(payload);
+    setDialogOpen(false);
+    setAdminDialogOpen(false);
+    notify("已退出管理模式");
+  }, [notify]);
 
   const changeView = useCallback((nextView) => {
     if (view === "assets" && nextView === "dashboard") {
@@ -247,6 +281,11 @@ function App() {
       await fetchServers();
       notify("已保存");
     } catch (error) {
+      if (error.status === 401) {
+        setAdmin((current) => ({ ...current, authenticated: false, expiresAt: null }));
+        setDialogOpen(false);
+        setAdminDialogOpen(true);
+      }
       notify(error.message);
     }
   }, [fetchServers, notify]);
@@ -260,6 +299,11 @@ function App() {
       await fetchServers();
       notify("已删除");
     } catch (error) {
+      if (error.status === 401) {
+        setAdmin((current) => ({ ...current, authenticated: false, expiresAt: null }));
+        setDialogOpen(false);
+        setAdminDialogOpen(true);
+      }
       notify(error.message);
     }
   }, [fetchServers, notify]);
@@ -293,6 +337,8 @@ function App() {
         searchLabel,
         searchPlaceholder,
         onRefresh: manualRefresh,
+        admin,
+        onAdminAction: admin.authenticated ? logoutAdmin : () => admin.configured ? setAdminDialogOpen(true) : notify("管理员密码尚未配置"),
         onAdd: () => openDialog(null)
       }),
       view === "dashboard"
@@ -303,6 +349,7 @@ function App() {
           setGroupFilter,
           servers: filteredServers,
           selectedId,
+          canEdit: admin.authenticated,
           onOpenServer: (server) => {
             setSelectedId(server.id);
             setDetailOpen(true);
@@ -318,10 +365,12 @@ function App() {
       openDialog,
       copy,
       refreshing: detailRefreshing,
+      canEdit: admin.authenticated,
       onRefresh: () => refreshSelectedServer(selectedServer.id),
       onClose: () => setDetailOpen(false)
     }) : null,
-    dialogOpen ? h(ServerDialog, { server: dialogServer, groups: groupNames, onClose: () => setDialogOpen(false), onSave: saveServer, onDelete: deleteServer }) : null,
+    dialogOpen && admin.authenticated ? h(ServerDialog, { server: dialogServer, groups: groupNames, onClose: () => setDialogOpen(false), onSave: saveServer, onDelete: deleteServer }) : null,
+    adminDialogOpen ? h(AdminLoginDialog, { onClose: () => setAdminDialogOpen(false), onLogin: loginAdmin }) : null,
     toast ? h("div", { className: "toast" }, toast) : null
   );
 }
@@ -385,12 +434,13 @@ function TopRail(props) {
     ) : null,
     h("div", { className: "top-actions" },
       h("button", { className: "ghost-action", type: "button", onClick: props.onRefresh }, "刷新状态"),
-      h("button", { className: "primary-action", type: "button", onClick: props.onAdd }, "添加服务器")
+      h("button", { className: `admin-action${props.admin.authenticated ? " active" : ""}`, type: "button", onClick: props.onAdminAction }, props.admin.authenticated ? "退出管理" : props.admin.configured ? "管理员解锁" : "管理未配置"),
+      props.admin.authenticated ? h("button", { className: "primary-action", type: "button", onClick: props.onAdd }, "添加服务器") : null
     )
   );
 }
 
-function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, selectedId, onOpenServer, openDialog }) {
+function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, selectedId, canEdit, onOpenServer, openDialog }) {
   return h("section", { className: "dashboard-view" },
     h("div", { className: "hero-board" },
       h("div", { className: "hero-main" },
@@ -419,9 +469,9 @@ function DashboardView({ totals, groups, groupFilter, setGroupFilter, servers, s
         server,
         selected: server.id === selectedId,
         onSelect: () => onOpenServer(server),
-        onEdit: () => openDialog(server)
+        onEdit: canEdit ? () => openDialog(server) : null
       })))
-      : h(EmptyState, { onAdd: () => openDialog(null) })
+      : h(EmptyState, { canEdit, onAdd: () => openDialog(null) })
   );
 }
 
@@ -466,7 +516,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
       ),
       h("div", { className: "actions" },
         h("div", { className: `status-badge ${machineState}` }, machineStateLabel(machineState)),
-        h("button", {
+        onEdit ? h("button", {
           className: "icon-btn",
           type: "button",
           title: "编辑",
@@ -475,7 +525,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
             event.stopPropagation();
             onEdit();
           }
-        }, h(EditIcon))
+        }, h(EditIcon)) : null
       )
     ),
     h("div", { className: `hero ${machineState}` },
@@ -663,7 +713,7 @@ function Sparkline({ values, color }) {
   return h("svg", { width, height, viewBox: `0 0 ${width} ${height}` }, h("polyline", { points, fill: "none", stroke, strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
 
-function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClose }) {
+function DetailOverlay({ server, openDialog, copy, refreshing, canEdit, onRefresh, onClose }) {
   if (!server) {
     return null;
   }
@@ -683,7 +733,7 @@ function DetailOverlay({ server, openDialog, copy, refreshing, onRefresh, onClos
       ),
       h("div", { className: "detail-actions" },
         h("button", { className: "ghost-action detail-refresh", type: "button", onClick: onRefresh, disabled: refreshing }, refreshing ? "刷新中" : "刷新数据"),
-        h("button", { className: "icon-button", type: "button", onClick: () => openDialog(server), "aria-label": "编辑服务器" }, "✎"),
+        canEdit ? h("button", { className: "icon-button", type: "button", onClick: () => openDialog(server), "aria-label": "编辑服务器" }, "✎") : null,
         h("button", { className: "icon-button", type: "button", onClick: onClose, "aria-label": "关闭详情" }, "×")
       )
     ),
@@ -1297,8 +1347,49 @@ function ChangelogView({ entries, loading, updatedAt }) {
   );
 }
 
-function EmptyState({ onAdd }) {
-  return h("section", { className: "empty-state" }, h("div", { className: "empty-icon" }, "+"), h("h3", null, "添加第一台服务器"), h("p", null, "配置 SSH 登录信息后，看板会定时采集显存和算力占用。"), h("button", { className: "primary-action", type: "button", onClick: onAdd }, "添加服务器"));
+function EmptyState({ canEdit, onAdd }) {
+  return h("section", { className: "empty-state" }, h("div", { className: "empty-icon" }, canEdit ? "+" : "⌁"), h("h3", null, canEdit ? "添加第一台服务器" : "暂无服务器"), h("p", null, canEdit ? "配置 SSH 登录信息后，看板会定时采集显存和算力占用。" : "当前为只读模式，请联系管理员添加服务器。"), canEdit ? h("button", { className: "primary-action", type: "button", onClick: onAdd }, "添加服务器") : null);
+}
+
+function AdminLoginDialog({ onClose, onLogin }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  return h("div", { className: "dialog-backdrop admin-backdrop", role: "presentation", onMouseDown: onClose },
+    h("form", {
+      className: "server-dialog admin-dialog",
+      onMouseDown: (event) => event.stopPropagation(),
+      onSubmit: async (event) => {
+        event.preventDefault();
+        if (loading) return;
+        setLoading(true);
+        setError("");
+        try {
+          await onLogin(password);
+        } catch (loginError) {
+          setError(loginError.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+    },
+      h("div", { className: "admin-lock-mark", "aria-hidden": "true" }, h("span")),
+      h("div", { className: "dialog-head admin-dialog-head" },
+        h("div", null, h("p", { className: "eyebrow" }, "Admin access"), h("h3", null, "解锁服务器管理")),
+        h("button", { className: "icon-button", type: "button", onClick: onClose, "aria-label": "关闭管理员登录" }, "×")
+      ),
+      h("p", { className: "admin-dialog-copy" }, "监控数据对所有人可见，服务器的添加、编辑和删除仅管理员可操作。"),
+      h("label", { className: "admin-password-field" },
+        h("span", null, "管理员密码"),
+        h("input", { value: password, type: "password", autoFocus: true, autoComplete: "current-password", required: true, minLength: 8, onChange: (event) => setPassword(event.target.value), placeholder: "请输入管理员密码" })
+      ),
+      error ? h("div", { className: "admin-login-error", role: "alert" }, error) : null,
+      h("div", { className: "dialog-actions admin-dialog-actions" },
+        h("button", { className: "ghost-action", type: "button", onClick: onClose }, "取消"),
+        h("button", { className: "primary-action", type: "submit", disabled: loading || password.length < 8 }, loading ? "验证中…" : "解锁管理")
+      )
+    )
+  );
 }
 
 function ServerDialog({ server, groups, onClose, onSave, onDelete }) {
@@ -1557,7 +1648,12 @@ function modelSummary(server) {
 async function requestJson(url, options) {
   const response = await fetch(url, options);
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `请求失败 ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(payload.error || `请求失败 ${response.status}`);
+    error.status = response.status;
+    error.code = payload.code;
+    throw error;
+  }
   return payload;
 }
 

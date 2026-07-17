@@ -3102,6 +3102,124 @@ body {
   }
 }
 
+/* Single-admin edit lock: monitoring stays public while configuration controls stay explicit. */
+.admin-action {
+  min-height: 31px;
+  border: 1px solid #d9e1e8;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #596875;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.admin-action:hover,
+.admin-action:focus-visible {
+  border-color: rgba(49, 95, 233, 0.42);
+  color: #315fe9;
+  outline: none;
+}
+
+.admin-action.active {
+  border-color: rgba(17, 157, 111, 0.26);
+  background: #edf9f4;
+  color: #087855;
+}
+
+.admin-backdrop {
+  z-index: 40;
+  backdrop-filter: blur(8px);
+}
+
+.admin-dialog {
+  position: relative;
+  width: min(420px, calc(100vw - 28px));
+  overflow: hidden;
+  gap: 15px;
+  border-color: #dfe6ec;
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 24px 70px rgba(22, 41, 58, 0.2);
+}
+
+.admin-dialog::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #31a7dc, #5969ef 54%, #7457ed);
+}
+
+.admin-lock-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #eef8ff, #f1efff);
+  box-shadow: inset 0 0 0 1px rgba(70, 104, 220, 0.12);
+}
+
+.admin-lock-mark span {
+  position: relative;
+  width: 17px;
+  height: 14px;
+  border: 2px solid #4868df;
+  border-radius: 4px;
+}
+
+.admin-lock-mark span::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: -10px;
+  width: 7px;
+  height: 9px;
+  border: 2px solid #4868df;
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+}
+
+.admin-dialog-head h3 {
+  margin-top: 3px;
+  font-size: 22px;
+  letter-spacing: -0.035em;
+}
+
+.admin-dialog-copy {
+  margin: 0;
+  color: #6d7b87;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.admin-password-field input:focus {
+  border-color: #5873e7;
+  box-shadow: 0 0 0 3px rgba(88, 115, 231, 0.12);
+}
+
+.admin-login-error {
+  border: 1px solid #ffd4d4;
+  border-radius: 9px;
+  background: #fff5f5;
+  color: #b73535;
+  padding: 9px 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-dialog-actions {
+  justify-content: flex-end;
+}
+
+.admin-dialog-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

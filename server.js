@@ -4,6 +4,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
 const { HistoryStore } = require("./history-store");
+const { AdminAuth } = require("./admin-auth");
 
 const PORT = Number(process.env.PORT || 3066);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
@@ -62,6 +63,16 @@ const HISTORY_FINE_DAYS = clampInt(process.env.HISTORY_FINE_DAYS, 1, 3650, 90);
 const HISTORY_MAX_RANGE_DAYS = clampInt(process.env.HISTORY_MAX_RANGE_DAYS, 1, 3650, 366);
 const HISTORY_BUCKET_MS = clampInt(process.env.HISTORY_BUCKET_MS, 1000, 60000, 60000);
 const historyStore = new HistoryStore({ root: HISTORY_DIR, bucketMs: HISTORY_BUCKET_MS, fineDays: HISTORY_FINE_DAYS, maxRangeDays: HISTORY_MAX_RANGE_DAYS });
+const ADMIN_SESSION_HOURS = clampInt(process.env.ADMIN_SESSION_HOURS, 1, 168, 8);
+const ADMIN_LOGIN_MAX_ATTEMPTS = clampInt(process.env.ADMIN_LOGIN_MAX_ATTEMPTS, 1, 20, 5);
+const ADMIN_LOGIN_WINDOW_MINUTES = clampInt(process.env.ADMIN_LOGIN_WINDOW_MINUTES, 1, 1440, 15);
+const adminAuth = new AdminAuth({
+  passwordHash: process.env.ADMIN_PASSWORD_HASH,
+  sessionTtlMs: ADMIN_SESSION_HOURS * 60 * 60 * 1000,
+  maxAttempts: ADMIN_LOGIN_MAX_ATTEMPTS,
+  rateWindowMs: ADMIN_LOGIN_WINDOW_MINUTES * 60 * 1000,
+  forceSecureCookie: String(process.env.ADMIN_COOKIE_SECURE || "") === "1"
+});
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -1684,6 +1695,36 @@ async function handleApi(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const parts = url.pathname.split("/").filter(Boolean);
 
+  if (req.method === "GET" && url.pathname === "/api/auth/status") {
+    sendJson(res, 200, adminAuth.status(req));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/login") {
+    const body = await readJson(req);
+    const result = adminAuth.login(req, body.password);
+    if (!result.ok) {
+      if (result.retryAfterSeconds) res.setHeader("Retry-After", String(result.retryAfterSeconds));
+      sendJson(res, result.status, { error: result.error, configured: adminAuth.configured });
+      return;
+    }
+    res.setHeader("Set-Cookie", adminAuth.sessionCookie(req, result.token));
+    sendJson(res, 200, { configured: true, authenticated: true, expiresAt: new Date(result.expiresAt).toISOString() });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+    adminAuth.logout(req);
+    res.setHeader("Set-Cookie", adminAuth.clearCookie(req));
+    sendJson(res, 200, { configured: adminAuth.configured, authenticated: false, expiresAt: null });
+    return;
+  }
+
+  if (isServerConfigMutation(req, url, parts) && !adminAuth.isAuthenticated(req)) {
+    sendJson(res, 401, { error: adminAuth.configured ? "请先解锁管理员权限" : "管理员密码尚未配置", code: "ADMIN_REQUIRED" });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/site-config") {
     sendJson(res, 200, loadSiteConfig());
     return;
@@ -1847,6 +1888,11 @@ async function handleApi(req, res) {
   sendJson(res, 404, { error: "API 不存在" });
 }
 
+function isServerConfigMutation(req, url, parts) {
+  if (req.method === "POST" && url.pathname === "/api/servers") return true;
+  return (req.method === "PATCH" || req.method === "DELETE") && parts[0] === "api" && parts[1] === "servers" && Boolean(parts[2]);
+}
+
 const server = http.createServer((req, res) => {
   if (req.url.startsWith("/api/")) {
     handleApi(req, res).catch((error) => {
@@ -1880,4 +1926,5 @@ scheduleDailyAssetRefresh();
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`GPU/DCU monitor is running at http://localhost:${PORT}`);
+  if (!adminAuth.configured) console.warn("ADMIN_PASSWORD_HASH is not configured; server editing is locked.");
 });

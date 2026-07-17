@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/history-store.test.js"
+    "test": "node test/history-store.test.js && node test/admin-auth.test.js",
+    "admin:hash": "node scripts/generate-admin-hash.js"
   },
   "engines": {
     "node": ">=18"
