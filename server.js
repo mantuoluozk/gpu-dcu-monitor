@@ -1603,7 +1603,11 @@ function applySavedModels(gpus, server) {
 function mergeGpuModels(gpus, modelByIndex) {
   return gpus.map((gpu) => {
     const detected = modelByIndex.get(gpu.index) || {};
-    const model = detected.model || gpu.model || null;
+    const detectedModel = normalizeModelName(detected.model);
+    const savedModel = normalizeModelName(gpu.model);
+    const model = /^BW$/i.test(detectedModel || "") && /^BW\d+/i.test(savedModel || "")
+      ? savedModel
+      : detectedModel || savedModel || null;
     return {
       ...gpu,
       model,
