@@ -1134,6 +1134,13 @@ function parseSystemOutput(output) {
     }
   }
 
+  const detailedSocketCount = system.cpuSocketDetails.filter((detail) => (
+    detail.socket || detail.version || detail.partNumber
+  )).length;
+  if (detailedSocketCount > (system.cpuSockets || 0)) {
+    system.cpuSockets = detailedSocketCount;
+  }
+
   return system;
 }
 
