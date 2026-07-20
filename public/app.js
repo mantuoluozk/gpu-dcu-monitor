@@ -539,8 +539,7 @@ const ServerCard = memo(function ServerCard({ server, selected, onSelect, onEdit
         h("div", { className: "hero-hw cpu", title: `${formatCpuModel(bestCpuModel(system))} · ${cardCpuMeta(system)}` },
           h("span", { className: "hw-type" }, "CPU"),
           h("div", { className: "hw-copy" },
-            h("strong", null, compactCpuModel(system)),
-            h("em", null, cardCpuCapacity(system))
+            h("strong", null, compactCpuModel(system))
           )
         ),
         h("div", { className: `hero-hw accelerator ${machineState}`, title: `${cardAcceleratorText(server, status, acceleratorKind)} · ${cardAcceleratorMeta(server, system)}` },
@@ -592,7 +591,8 @@ function ProgressRing({ percent, color, bgColor, main, sub }) {
 }
 
 function compactCpuModel(system) {
-  const model = formatCpuModel(bestCpuModel(system));
+  const model = formatCpuModel(baseCpuModel(system));
+  if (/^Hygon C86 Processor(?:\s+x\d+)?$/i.test(model)) return "Hygon C86 Processor";
   const opn = model.match(/\bOPN\s+([A-Z0-9-]+)/i);
   const numbered = model.match(/\b(?:C86[-\s\w]*?\s)?(\d{4})\b/);
   if (opn) return `Hygon ${opn[1]}`;
@@ -1027,11 +1027,7 @@ function InfoCell({ label, value, wide }) {
 }
 
 function bestCpuModel(system) {
-  const candidates = [system.cpuLscpuModel, system.cpuModelDetail, system.cpuModels, system.cpuModel].filter(Boolean);
-  const model = candidates.find((value) => /\bOPN\s*[:：]?\s*[A-Z0-9-]{3,}/i.test(value))
-    || candidates.find((value) => /\bOPN\b/i.test(value))
-    || candidates[0]
-    || "-";
+  const model = baseCpuModel(system);
   if (/^Hygon C86 Processor(?:\s+x\d+)?$/i.test(model) && system.cpuSockets && system.cpuCores) {
     const coresPerSocket = Number(system.cpuCores) / Number(system.cpuSockets);
     if (Number.isInteger(coresPerSocket) && coresPerSocket > 0) {
@@ -1039,6 +1035,14 @@ function bestCpuModel(system) {
     }
   }
   return model;
+}
+
+function baseCpuModel(system) {
+  const candidates = [system.cpuLscpuModel, system.cpuModelDetail, system.cpuModels, system.cpuModel].filter(Boolean);
+  return candidates.find((value) => /\bOPN\s*[:：]?\s*[A-Z0-9-]{3,}/i.test(value))
+    || candidates.find((value) => /\bOPN\b/i.test(value))
+    || candidates[0]
+    || "-";
 }
 
 function formatCpuModel(value) {
