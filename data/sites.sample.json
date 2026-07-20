@@ -17,6 +17,12 @@
       "name": "太原中心",
       "description": "连接 EasyConnect 后访问",
       "url": "http://taiyuan-monitor.example.local:3066"
+    },
+    {
+      "id": "zhengzhou",
+      "name": "郑州中心",
+      "description": "连接 VPN 后访问",
+      "url": "http://zhengzhou-monitor.example.local:3066"
     }
   ]
 }
