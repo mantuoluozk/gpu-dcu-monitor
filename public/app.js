@@ -1028,10 +1028,17 @@ function InfoCell({ label, value, wide }) {
 
 function bestCpuModel(system) {
   const candidates = [system.cpuLscpuModel, system.cpuModelDetail, system.cpuModels, system.cpuModel].filter(Boolean);
-  return candidates.find((value) => /\bOPN\s*[:：]?\s*[A-Z0-9-]{3,}/i.test(value))
+  const model = candidates.find((value) => /\bOPN\s*[:：]?\s*[A-Z0-9-]{3,}/i.test(value))
     || candidates.find((value) => /\bOPN\b/i.test(value))
     || candidates[0]
     || "-";
+  if (/^Hygon C86 Processor(?:\s+x\d+)?$/i.test(model) && system.cpuSockets && system.cpuCores) {
+    const coresPerSocket = Number(system.cpuCores) / Number(system.cpuSockets);
+    if (Number.isInteger(coresPerSocket) && coresPerSocket > 0) {
+      return `${model.replace(/\s+x\d+$/i, "")} · ${system.cpuSockets}路 × ${coresPerSocket}核`;
+    }
+  }
+  return model;
 }
 
 function formatCpuModel(value) {
@@ -1107,12 +1114,23 @@ function temperatureClass(value) {
 
 function cpuTemperatureCaption(system) {
   if (system.cpuTemperatureC === null || system.cpuTemperatureC === undefined) return "传感器未暴露";
-  return system.cpuTemperatureSource === "thermal_zone" ? "内核温区" : "CPU 传感器";
+  if (system.cpuTemperatureSource === "thermal_zone") return "内核温区";
+  if (system.cpuTemperatureSource === "hwmon:k10temp") return "CPU hwmon";
+  if (system.cpuTemperatureSource === "ipmitool") return "BMC / IPMI";
+  return "CPU 传感器";
 }
 
 function formatCpuTemperatureDetail(system) {
   if (system.cpuTemperatureC === null || system.cpuTemperatureC === undefined) return "传感器未暴露";
-  const source = system.cpuTemperatureSource === "thermal_zone" ? "内核温区" : system.cpuTemperatureSource === "sensors" ? "sensors" : "";
+  const source = system.cpuTemperatureSource === "thermal_zone"
+    ? "内核温区"
+    : system.cpuTemperatureSource === "sensors"
+      ? "sensors"
+      : system.cpuTemperatureSource === "hwmon:k10temp"
+        ? "hwmon / k10temp"
+        : system.cpuTemperatureSource === "ipmitool"
+          ? "BMC / IPMI"
+          : "";
   return [formatTemperature(system.cpuTemperatureC), source].filter(Boolean).join(" · ");
 }
 

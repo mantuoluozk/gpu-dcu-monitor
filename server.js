@@ -730,6 +730,8 @@ function buildModelCommand(command) {
   }
   return [
     buildHySmiCommand("--showproductname"),
+    "; printf '__GPU_MONITOR_DCU_CU__\\n';",
+    `${buildHySmiCommand("--showcunum")} 2>/dev/null || true`,
     "; printf '__GPU_MONITOR_DCU_QUERY__\\n';",
     `${buildHySmiCommand("-q")} 2>/dev/null || true`,
     "; printf '__GPU_MONITOR_ROCMINFO__\\n';",
@@ -787,7 +789,9 @@ function buildSystemCommand(command) {
     "cpu_temp_source='';",
     "cpu_temp=$(sensors 2>/dev/null | awk '/Package id 0|Tctl|Tdie|CPU/ {for(i=1;i<=NF;i++) if($i ~ /^\\+?[0-9.]+.*C$/){gsub(/[^0-9.]/,\"\",$i); if($i>max) max=$i}} END{if(max>0) printf \"%.1f\", max}');",
     "if [ -n \"$cpu_temp\" ]; then cpu_temp_source='sensors'; fi;",
+    "if [ -z \"$cpu_temp\" ]; then cpu_temp=$(for d in /sys/class/hwmon/hwmon*; do [ -d \"$d\" ] || continue; name=$(cat \"$d/name\" 2>/dev/null); [ \"$name\" = 'k10temp' ] || continue; for f in \"$d\"/temp*_input; do [ -r \"$f\" ] && cat \"$f\"; done; done | awk '{v=$1; if(v>1000) v=v/1000; if(v>max) max=v} END{if(max>0) printf \"%.1f\", max}'); if [ -n \"$cpu_temp\" ]; then cpu_temp_source='hwmon:k10temp'; fi; fi;",
     "if [ -z \"$cpu_temp\" ]; then cpu_temp=$(awk '{v=$1; if(v>1000) v=v/1000; if(v>max) max=v} END{if(max>0) printf \"%.1f\", max}' /sys/class/thermal/thermal_zone*/temp 2>/dev/null); if [ -n \"$cpu_temp\" ]; then cpu_temp_source='thermal_zone'; fi; fi;",
+    "if [ -z \"$cpu_temp\" ] && command -v ipmitool >/dev/null 2>&1; then cpu_temp=$(ipmitool sdr type Temperature 2>/dev/null | awk -F'|' '/^[ \\t]*CPU[0-9]+_TEMP[ \\t]*\\|/ {v=$5; gsub(/[^0-9.]/,\"\",v); if(v>max) max=v} END{if(max>0) printf \"%.1f\", max}'); if [ -n \"$cpu_temp\" ]; then cpu_temp_source='ipmitool'; fi; fi;",
     `driver_version=$( ( ${driverCommand} ) | awk -F: '/Driver|driver|Version|version|KMD|DTK|hy-smi|NVIDIA|[0-9]+\\.[0-9]+/ {line=$0; if(index(line, \":\")>0) line=$2; gsub(/^[ \\t=:-]+|[ \\t=:-]+$/, \"\", line); if(line && line !~ /^=+$/ && line !~ /System Management Interface/){print line; exit}}' );`,
     "printf 'SYS\\tcpuUtilization\\t%s\\n' \"$cpu_util\";",
     "printf 'SYS\\tcpuModel\\t%s\\n' \"$cpu_model\";",
@@ -1392,7 +1396,7 @@ function parseHyProductNames(output) {
       continue;
     }
 
-    if (line === "__GPU_MONITOR_DCU_QUERY__" || line === "__GPU_MONITOR_ROCMINFO__") {
+    if (line === "__GPU_MONITOR_DCU_CU__" || line === "__GPU_MONITOR_DCU_QUERY__" || line === "__GPU_MONITOR_ROCMINFO__") {
       currentIndex = null;
       continue;
     }
